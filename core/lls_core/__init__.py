@@ -1,5 +1,10 @@
+from importlib.metadata import PackageNotFoundError, version
 
-__version__ = "0.2.6"
+try:
+    __version__ = version("lls_core")
+except PackageNotFoundError:
+    # Editable/source checkout that is not installed, or a clone with no tags yet.
+    __version__ = "0.0.0"
 
 from strenum import StrEnum
 from enum import Enum
