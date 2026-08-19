@@ -31,6 +31,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
@@ -90,6 +92,8 @@ jobs:
       QT_API: pyqt6
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: conda-incubator/setup-miniconda@v2
         with:
@@ -160,6 +164,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
