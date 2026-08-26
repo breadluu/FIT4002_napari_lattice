@@ -60,7 +60,7 @@ jobs:
           # We include types-PyYAML here too for linux linting consistency
           # openssl 3.6.3 cannot parse DER certificates, which breaks
           # ssl.create_default_context() and therefore every dask compute.
-          conda install -y pyqt pyopencl pocl pytest-qt "openssl!=3.6.3" 
+          conda install -y pyqt pyopencl oclgrind pytest-qt "openssl!=3.6.3" 
           
           uv pip install --upgrade pip setuptools wheel
           uv pip install -e './core[testing]'
