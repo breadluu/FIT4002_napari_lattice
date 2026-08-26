@@ -308,6 +308,9 @@ def crop_volume_deskew(
     z_start_vol, z_end_vol = geometry.raw_z
     deskew_transform = geometry.deskew_transform
 
+    # Raw shape in xyz, to match x_start/y_start/z_start_vol's coordinate order
+    orig_img_shape = tuple(int(s) for s in original_volume.shape)[::-1]
+
     # Guard against a degenerate (zero- or one-voxel-wide) crop: if the projected
     # ROI bounding box falls entirely outside the raw volume along an axis,
     # clipping collapses both edges to the same boundary. A single-voxel extent

@@ -57,7 +57,9 @@ dependencies = [
     # bioio-czi uses by default, so output matches bioio (also pulled in by it).
     "pylibczirw",
     "pyopencl",
+    "mako",
     "pydantic>=2,<3",
+    "pydantic_core",
     "pyyaml",
     "psutil",
     "ome-types<0.6.0",  #pydantic v1 support removed from 0.6 onwards
@@ -160,6 +162,9 @@ ignore_unused = [
     # This is pinned but unused
     "fsspec",
     "ome-types",
+
+    # Required by pyopencl but never imported directly
+    "mako",
 
     # Used for the deployment, but never imported
     "build",
