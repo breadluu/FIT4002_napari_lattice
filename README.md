@@ -1,5 +1,6 @@
 # napari-lattice
 
+[![Journal Article](http://img.shields.io/badge/DOI-10.1111/jmi.70167-007EC6.svg?style=flat)](https://doi.org/10.1111/jmi.70167)
 [![License](https://img.shields.io/pypi/l/napari-lattice.svg?color=green)](https://github.com/githubuser/napari_lattice/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/napari-lattice.svg?color=green)](https://pypi.org/project/napari_lattice)
 [![Python Version](https://img.shields.io/pypi/pyversions/napari-lattice.svg?color=green)](https://python.org)
@@ -43,7 +44,7 @@ Sample lattice lightsheet data download: <https://doi.org/10.5281/zenodo.7117784
 
 ## Citing
 
-Rajasekhar, P., Milton, M., Geoghegan, N., Haase, R., Rogers, K. L., & Whitehead, L. (2025). napari-lattice (v1.0.3). Zenodo. https://doi.org/10.5281/zenodo.14776381
+Rajasekhar, P., Milton, M., Geoghegan, N. D., Zaman, I., Ashdown, G. W., Haase, R., Iskander, J., Coussens, A. K., Rogers, K. L., & Whitehead, L. (2026). napari-lattice: A user-friendly image processing tool for lattice light-sheet microscopy data. Journal of Microscopy, 1–12. https://doi.org/10.1111/jmi.70167
 
 ## Contributing
 
