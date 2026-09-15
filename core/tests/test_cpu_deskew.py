@@ -4,7 +4,7 @@ import pytest
 from lls_core import DeskewDirection, DeskewEngine
 from lls_core.models.crop import CropParams
 from lls_core.models.lattice_data import LatticeData
-from pydantic import ValidationError
+from pydantic.v1 import ValidationError
 from xarray import DataArray
 import tempfile
 from tests.utils import requires_real_gpu

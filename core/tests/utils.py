@@ -19,20 +19,14 @@ def _has_real_gpu() -> bool:
     pyclesperanto itself, not in lls_core - our own vendored deskew kernel
     (crop_volume_deskew) produces the correct answer on the same broken machine.
     Tests that use cle.deskew_y/deskew_x as a ground-truth reference can't be
-    meaningfully evaluated on such a backend.
-
-    The vendored affine_transform_deskew_y_3d/x_3d kernel (affine_transform_deskew.py,
-    used by the GPU deskew engine) is *also* affected on CI's pocl backend: a handful
-    of boundary voxels come back as a spurious 0 instead of the interpolated value.
-    Verified by diffing lls_core.cpu_deskew's CPU engine against a from-scratch,
-    float32-faithful reimplementation of the kernel (matches exactly) versus the
-    actual pocl-executed GPU engine (doesn't) for the same input - see
-    test_cpu_deskew.py::test_cpu_engine_matches_gpu_engine, gated by requires_real_gpu
-    for the same reason.
+    meaningfully evaluated on such a backend - including
+    test_cpu_deskew.py::test_cpu_engine_matches_gpu_engine, which compares the CPU
+    engine against cle.deskew_y/deskew_x and is gated by requires_real_gpu for the
+    same reason.
     """
-    import pyclesperanto as cle
+    import pyclesperanto_prototype as cle
     try:
-        return bool(cle.list_available_devices(device_type="gpu"))
+        return bool(cle.available_device_names(dev_type="gpu"))
     except Exception:
         return False
 
