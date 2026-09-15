@@ -1,5 +1,6 @@
 # napari-lattice
 
+[![Journal Article](http://img.shields.io/badge/DOI-10.1111/jmi.70167-007EC6.svg?style=flat)](https://doi.org/10.1111/jmi.70167)
 [![License](https://img.shields.io/pypi/l/napari-lattice.svg?color=green)](https://github.com/githubuser/napari_lattice/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/napari-lattice.svg?color=green)](https://pypi.org/project/napari_lattice)
 [![Python Version](https://img.shields.io/pypi/pyversions/napari-lattice.svg?color=green)](https://python.org)
@@ -43,7 +44,7 @@ Sample lattice lightsheet data download: <https://doi.org/10.5281/zenodo.7117784
 
 ## Citing
 
-Rajasekhar, P., Milton, M., Geoghegan, N., Haase, R., Rogers, K. L., & Whitehead, L. (2025). napari-lattice (v1.0.3). Zenodo. https://doi.org/10.5281/zenodo.14776381
+Rajasekhar, P., Milton, M., Geoghegan, N. D., Zaman, I., Ashdown, G. W., Haase, R., Iskander, J., Coussens, A. K., Rogers, K. L., & Whitehead, L. (2026). napari-lattice: A user-friendly image processing tool for lattice light-sheet microscopy data. Journal of Microscopy, 1–12. https://doi.org/10.1111/jmi.70167
 
 ## Contributing
 
@@ -58,7 +59,7 @@ Distributed under the terms of the [GPL-3.0 License] license,
 
  This project was supported by funding from the [Rogers Lab at the Centre for Dynamic Imaging at the Walter and Eliza Hall Institute of Medical Research](https://imaging.wehi.edu.au/). This project has been made possible in part by [Napari plugin accelerator grant](https://chanzuckerberg.com/science/programs-resources/imaging/napari/lattice-light-sheet-data-analysis-toolset/) from the Chan Zuckerberg Initiative DAF, an advised fund of the Silicon Valley Community Foundation.
 
- Thanks to the developers and maintainers of the amazing open-source plugins such as [pyclesperanto](https://github.com/clEsperanto/pyclesperanto), [bioio](https://github.com/bioio-devs/bioio), [dask](https://github.com/dask/dask) and [pycudadecon](https://github.com/tlambert03/pycudadecon).
+ Thanks to the developers and maintainers of the amazing open-source plugins such as [pyclesperanto](https://github.com/clEsperanto/pyclesperanto_prototype), [bioio](https://github.com/bioio-devs/bioio), [dask](https://github.com/dask/dask) and [pycudadecon](https://github.com/tlambert03/pycudadecon).
  Thanks in particular to the developers of open source projects: [LLSpy](https://github.com/tlambert03/LLSpy) and [lls_dd](https://github.com/VolkerH/Lattice_Lightsheet_Deskew_Deconv) as they were referred to extensively for developing napari-lattice.
  Thanks to the imagesc forum!
 
