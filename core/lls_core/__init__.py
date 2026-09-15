@@ -8,9 +8,7 @@ except PackageNotFoundError:
 
 from strenum import StrEnum
 from enum import Enum
-class DeskewDirection(Enum):
-    X = 1
-    Y = 2
+from pyclesperanto_prototype._tier8._affine_transform_deskew_3d import DeskewDirection
 
 class DeskewEngine(Enum):
     """
@@ -23,8 +21,6 @@ class DeskewEngine(Enum):
     """
     GPU = 1
     CPU = 2
-
-
 from lls_core.models.lattice_data import LatticeData
 from lls_core.models.deconvolution import DeconvolutionParams
 from lls_core.models.lattice_data import CropParams
