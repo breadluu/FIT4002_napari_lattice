@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 def adjust_maximum(widget: "RangedWidget", max: int):
     """
     Updates the maximum value
@@ -50,6 +51,7 @@ def adjust_maximum(widget: "RangedWidget", max: int):
     widget.max = max
     if widget.value > max:
         widget.value = max
+
 
 def exception_to_html(e: BaseException) -> str:
     """
@@ -66,6 +68,7 @@ def exception_to_html(e: BaseException) -> str:
     else:
         return f"{type(e).__name__}: {e}"
 
+
 def get_friendly_validations(model: FieldGroup) -> str:
     """
     Generates a BaseModel, but returns validation errors in a user friendly way
@@ -76,23 +79,27 @@ def get_friendly_validations(model: FieldGroup) -> str:
     except BaseException as e:
         return exception_to_html(e)
 
+
 class PixelSizeSource(StrEnum):
     Metadata = "Image Metadata"
     Manual = "Manual"
 
+
 class WorkflowSource(StrEnum):
     ActiveWorkflow = "Active Workflow"
     CustomPath = "Custom Path"
+
 
 class BackgroundSource(StrEnum):
     Auto = "Automatic"
     SecondLast = "Second Last"
     Custom = "Custom"
 
+
 def dimension_order_options(ndims: Optional[int]) -> List[str]:
     """
     Dimension-order choices offered for an image stack of the given dimensionality,
-    including the "Get from Metadata" option. Kept as a separate function so 
+    including the "Get from Metadata" option. Kept as a separate function so
     we can test interaction between the reader -> GUI without a Qt widget: For example, a
     single-channel stack that the reader keeps 5D must offer the TCZYX/CTZYX orders.
     """
@@ -107,6 +114,7 @@ def dimension_order_options(ndims: Optional[int]) -> List[str]:
         return ["TCZYX", "CTZYX"] + default
     else:
         raise Exception("Only 3-5 dimensional arrays are supported")
+
 
 def enable_field(field: MagicField, enabled: bool = True) -> None:
     """
@@ -125,10 +133,11 @@ def enable_field(field: MagicField, enabled: bool = True) -> None:
         except RuntimeError:
             pass
 
+
 FieldValueType = TypeVar("FieldValueType")
 SelfType = TypeVar("SelfType")
 def enable_if(fields: List[MagicField]):
-    """ 
+    """
     Makes an event handler that dynamically disables and enables a set of fields based on a criteria
     Args:
         condition: A function that takes an instance of the class and returns True if the fields should be enabled
@@ -164,18 +173,20 @@ def enable_if(fields: List[MagicField]):
             return handler
 
         return make_handler(fn)
-    
+
     return _decorator
+
 
 class StackAlong(StrEnum):
     CHANNEL = "Channel"
     TIME = "Time"
 
+
 class NapariFieldGroup(MagicTemplate):
     def __post_init__(self):
         self.changed.connect(self._validate, unique=False)
 
-        # Style the error label. 
+        # Style the error label.
         # We have to check this is a QLabel because in theory this might run in a non-QT backend
         errors = self.errors.native
         from qtpy.QtWidgets import QLabel
@@ -228,7 +239,7 @@ class NapariFieldGroup(MagicTemplate):
         from importlib_resources import as_file
         tab_parent = self._get_parent_tab_widget()
         index = self._get_tab_index()
-            
+
         if hasattr(self, "fields_enabled") and not self.fields_enabled.value:
             # Special case for "diabled" sections
             icon = GREY
@@ -255,11 +266,13 @@ class NapariFieldGroup(MagicTemplate):
     def _make_model(self):
         raise NotImplementedError()
 
+
 class DeskewKwargs(NapariImageParams):
     angle: float
     skew: DeskewDirection
     invert_scan_direction: bool
     coverslip_rotation: bool
+
 
 @magicclass
 class DeskewFields(NapariFieldGroup):
@@ -329,7 +342,8 @@ class DeskewFields(NapariFieldGroup):
     # merge_all_channels = field(False).with_options(label="Merge all Channels")
     quick_deskew = field(False).with_options(
         label="Quick Deskew",
-        tooltip = "View the deskewed image. This does NOT generate a new image, but instead transforms\nthe current image in the viewer. Use `Preview` to generate a new image.")
+        tooltip = "View the deskewed image. This does NOT generate a new image, but instead transforms\nthe current image in the viewer. Use `Preview` to generate a new image."
+    )
     errors = field(Label).with_options(label="Errors")
     # Live readout of how large the deskewed volume will be. Deskewing grows the image
     # along the shear axis, so an input that loads fine can produce a buffer the GPU
@@ -400,10 +414,10 @@ class DeskewFields(NapariFieldGroup):
 
     @img_layer.connect
     @enable_if([stack_along])
-    def _hide_stack_along(self, img_layer: List[Image]):
-        # Hide the "Stack Along" option if we only have one image
+    def _hide_stock_along(self, img_layer: List[Image]):
+        # Hide the "Stock Along" option if we only have one image
         return len(img_layer) > 1
-    
+
     @coverslip_rotation.connect
     def _on_coverslip_toggled(self):
         ticked = self.coverslip_rotation.value
@@ -437,7 +451,7 @@ class DeskewFields(NapariFieldGroup):
         if quick_deskew:
             try:
                 #initialize lattice model
-                lattice = self._make_model() 
+                lattice = self._make_model()
             except ValidationError as e:
                 logger.info(f"Validation Error: {e}")
                 # Ignore if the deskew parameters are invalid
@@ -452,7 +466,7 @@ class DeskewFields(NapariFieldGroup):
             affine_transform = lattice.derived.deskew_affine_transform_zyx
             ndim_display = 3
         else:
-            try: 
+            try:
                 pixels = self._get_kwargs()["physical_pixel_sizes"]
                 scale = (
                             pixels.Z,
@@ -492,13 +506,13 @@ class DeskewFields(NapariFieldGroup):
                 # re-apply (both handlers fire on the same change) that cost seconds
                 # per parameter tweak. No-op affine assignments are skipped.
                 apply_layer_transform(image, affine=new_affine)
-        
+
         try:
             from napari_lattice.utils import get_viewer
             viewer = get_viewer()
             viewer.dims.ndisplay = ndim_display
             viewer.reset_view()
-        except: 
+        except:
             pass
 
     def _image_params_key(self):
@@ -613,6 +627,7 @@ class DeskewFields(NapariFieldGroup):
         if isinstance(native, QLabel):
             native.setStyleSheet("color: orange;" if too_big else "")
 
+
 @magicclass
 class DeconvolutionFields(NapariFieldGroup):
     # A counterpart to the DeconvolutionParams Pydantic class
@@ -667,6 +682,7 @@ class DeconvolutionFields(NapariFieldGroup):
             psf=[psf for psf in self.psf.value if psf.is_file()],
             decon_num_iter=self.decon_num_iter.value
         )
+
 
 @magicclass
 class CroppingFields(NapariFieldGroup):
@@ -764,10 +780,11 @@ class CroppingFields(NapariFieldGroup):
             return CropParams(
                 # Convert from the input image space to the deskewed image space
                 # We assume here that dx == dy which isn't ideal
-                roi_list=rois, 
+                roi_list=rois,
                 z_range=tuple(self.z_range.value),
             )
         return None
+
 
 @magicclass
 class WorkflowFields(NapariFieldGroup):
@@ -800,6 +817,7 @@ class WorkflowFields(NapariFieldGroup):
         # the output metadata sidecar. Loading here would discard it: a Workflow does not
         # remember where it was read from, so this is the only chance to keep it.
         return self.workflow_path.value
+
 
 @magicclass
 class OutputFields(NapariFieldGroup):
@@ -877,3 +895,34 @@ class OutputFields(NapariFieldGroup):
             adjust_maximum(widget, img.sizes["T"])
         for widget in self.channel_range:
             adjust_maximum(widget, img.sizes["C"])
+
+
+@magicclass
+class TrackmateFields(NapariFieldGroup):
+    xml_path = field(Path).with_options(
+        label="TrackMate XML file",
+        tooltip="Path to the TrackMate 'tracks-only' XML file"
+    )
+    layer_name = field("").with_options(
+        label="Layer name (optional)",
+        tooltip="Optional name for the tracks layer"
+    )
+    errors = field(Label).with_options(label="Errors")
+
+    @set_design(text="Load TrackMate tracks")
+    def load_tracks(self):
+        from napari_lattice.utils import get_viewer
+        from lls_core.trackmate_io import trackmate_xml_to_napari_tracks
+        path = self.xml_path.value
+        if path is None:
+            raise ValueError("No file selected")
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+        data, properties = trackmate_xml_to_napari_tracks(path)
+        viewer = get_viewer()
+        name = self.layer_name.value.strip() or path.stem
+        viewer.add_tracks(data, properties=properties, name=name, tail_width=2)
+
+    def _make_model(self):
+        # Return None as this field group's primary purpose is to load tracks, not to produce a model.
+        return None
