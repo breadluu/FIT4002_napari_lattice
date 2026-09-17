@@ -1,9 +1,9 @@
 """
 trackmate_io.py
 
-Load ROI trajectories exported from TrackMate ("Export tracks to XML file",
-the lightweight track-only export, not the full TrackMate XML project file)
-and convert them into the data format napari's ``Tracks`` layer expects.
+Load ROI trajectories exported from TrackMate - either "Export tracks to XML
+file" or "Export spots to CSV" and convert them into the data format napari's 
+``Tracks`` layer expects.
 
 TrackMate's "tracks-only" XML looks like this::
 
@@ -16,6 +16,15 @@ TrackMate's "tracks-only" XML looks like this::
       ...
     </Tracks>
 
+TrackMate's CSV looks like this::
+
+    LABEL,ID,TRACK_ID,QUALITY,POSITION_X,POSITION_Y,POSITION_Z,POSITION_T,FRAME,RADIUS,...
+    Label,Spot ID,Track ID,Quality,X,Y,Z,T,Frame,Radius,...
+    Label,Spot ID,Track ID,Quality,X,Y,Z,T,Frame,R,...
+    ,,,(quality),(micron),(micron),(micron),(sec),,(micron),...
+    ID43514,43514,0,0.023,47.85,0.0,0.0,0.0,0,7.5,...
+    ...
+
 napari's Tracks layer wants an (N, D+2) array where each row is
 ``[track_id, t, (z), y, x]`` and rows are sorted by increasing track_id then
 time (see https://napari.org/stable/howtos/layers/tracks.html). Note the
@@ -24,6 +33,7 @@ uses (z, y, x), matching image-axis order.
 """
 from __future__ import annotations
 
+import csv
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Tuple, Union
@@ -106,6 +116,96 @@ def load_trackmate_xml(xml_path: PathLike) -> Dict[str, dict]:
     return tracks
 
 
+def load_trackmate_csv(csv_path: PathLike) -> Dict[str, dict]:
+    """
+    Parse a TrackMate "Spots in tracks statistics" CSV export into the same
+    plain dict shape as :func:`load_trackmate_xml`:
+
+        tracks = {'0': {'nSpots': 41, 'trackData': np.ndarray of shape (41, 4)}, ...}
+
+    where each row of ``trackData`` is ``[t, x, y, z]``. ``t`` is taken from
+    the CSV's ``FRAME`` column (an integer frame index), not ``POSITION_T``
+    (physical time in seconds) - the two coincide only when the export's
+    frame interval is 1, and downstream processing indexes the image stack
+    by frame number.
+
+    Parameters
+    ----------
+    csv_path : str or Path
+        Path to the CSV file produced by TrackMate's 
+        "Export spots to CSV" action
+
+    Returns
+    -------
+    dict
+        Mapping from track index (as a string) to a dict with keys
+        ``'nSpots'`` and ``'trackData'``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``csv_path`` does not exist.
+    ValueError
+        If the file does not have the expected TrackMate spots columns, or
+        contains no parseable spot rows.
+    """
+    csv_path = Path(csv_path)
+    if not csv_path.is_file():
+        raise FileNotFoundError(f"TrackMate CSV file not found: {csv_path}")
+
+    required = {"TRACK_ID", "POSITION_X", "POSITION_Y", "POSITION_Z", "FRAME"}
+    rows_by_track: Dict[str, list] = {}
+    with open(csv_path, newline="") as handle:
+        reader = csv.DictReader(handle)
+        missing = required - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(
+                f"'{csv_path}' does not look like a TrackMate spots CSV export "
+                f"(missing columns: {sorted(missing)})"
+            )
+
+        for row in reader:
+            # TrackMate repeats the header 3 more times (human-readable
+            # labels, abbreviated labels, then a units row like
+            # "(quality),(micron),...") before the real data starts. Skip
+            # any row whose numeric columns don't parse, rather than
+            # assuming a fixed number of rows to skip.
+            try:
+                track_id = str(int(float(row["TRACK_ID"])))
+                t = float(row["FRAME"])
+                x = float(row["POSITION_X"])
+                y = float(row["POSITION_Y"])
+                z = float(row["POSITION_Z"])
+            except (TypeError, ValueError):
+                continue
+            rows_by_track.setdefault(track_id, []).append((t, x, y, z))
+
+    if not rows_by_track:
+        raise ValueError(f"No spot data found in '{csv_path}'")
+
+    tracks: Dict[str, dict] = {}
+    for track_id, rows in rows_by_track.items():
+        track_data = np.asarray(rows, dtype=float)
+        track_data = track_data[np.argsort(track_data[:, 0])]
+        tracks[track_id] = {"nSpots": len(rows), "trackData": track_data}
+
+    return tracks
+
+
+def load_trackmate_tracks(path: PathLike) -> Dict[str, dict]:
+    """Load a TrackMate track export, dispatching on file suffix (.xml or .csv)."""
+    path = Path(path)
+    suffix = path.suffix.lower()
+    if suffix == ".xml":
+        return load_trackmate_xml(path)
+    if suffix == ".csv":
+        return load_trackmate_csv(path)
+    raise ValueError(
+        f"Unsupported TrackMate track file type '{suffix}' for '{path}' "
+        "(expected .xml or .csv)"
+    )
+
+
 def trackmate_tracks_to_napari(
     tracks: Dict[str, dict],
 ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
@@ -152,9 +252,9 @@ def trackmate_tracks_to_napari(
     return data, properties
 
 
-def trackmate_xml_to_napari_tracks(
-    xml_path: PathLike,
+def trackmate_file_to_napari_tracks(
+    path: PathLike,
 ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
-    """Convenience wrapper: parse an XML file straight to napari-ready data."""
-    tracks = load_trackmate_xml(xml_path)
+    """Convenience wrapper: parse a TrackMate .xml or .csv straight to napari-ready data."""
+    tracks = load_trackmate_tracks(path)
     return trackmate_tracks_to_napari(tracks)

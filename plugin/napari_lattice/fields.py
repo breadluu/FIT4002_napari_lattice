@@ -899,9 +899,9 @@ class OutputFields(NapariFieldGroup):
 
 @magicclass
 class TrackmateFields(NapariFieldGroup):
-    xml_path = field(Path).with_options(
-        label="TrackMate XML file",
-        tooltip="Path to the TrackMate 'tracks-only' XML file"
+    tracks_path = field(Path).with_options(
+        label="TrackMate tracks file",
+        tooltip="Path to a TrackMate 'tracks-only' XML export, or a 'spots in tracks statistics' CSV export"
     )
     layer_name = field("").with_options(
         label="Layer name (optional)",
@@ -912,13 +912,13 @@ class TrackmateFields(NapariFieldGroup):
     @set_design(text="Load TrackMate tracks")
     def load_tracks(self):
         from napari_lattice.utils import get_viewer
-        from lls_core.trackmate_io import trackmate_xml_to_napari_tracks
-        path = self.xml_path.value
+        from lls_core.trackmate_io import trackmate_file_to_napari_tracks
+        path = self.tracks_path.value
         if path is None:
             raise ValueError("No file selected")
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
-        data, properties = trackmate_xml_to_napari_tracks(path)
+        data, properties = trackmate_file_to_napari_tracks(path)
         viewer = get_viewer()
         name = self.layer_name.value.strip() or path.stem
         viewer.add_tracks(data, properties=properties, name=name, tail_width=2)
