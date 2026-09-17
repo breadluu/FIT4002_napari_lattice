@@ -909,19 +909,61 @@ class TrackmateFields(NapariFieldGroup):
     )
     errors = field(Label).with_options(label="Errors")
 
+    def _get_track_id_options(self, _) -> List[str]:
+        tracks = getattr(self, "_tracks", None) or {}
+        return ["All"] + sorted(tracks, key=int)
+
+    track_id = field(str).with_choices(_get_track_id_options).with_options(
+        label="Track",
+        value="All",
+        tooltip="Isolate a single track by ID, or 'All' to show every track in the file"
+    )
+
     @set_design(text="Load TrackMate tracks")
     def load_tracks(self):
-        from napari_lattice.utils import get_viewer
-        from lls_core.trackmate_io import trackmate_file_to_napari_tracks
+        from lls_core.trackmate_io import load_trackmate_tracks
         path = self.tracks_path.value
         if path is None:
             raise ValueError("No file selected")
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
-        data, properties = trackmate_file_to_napari_tracks(path)
+        self._tracks = load_trackmate_tracks(path)
+        self.track_id.reset_choices()
+        self.track_id.value = "All"
+        self._render_tracks_layer()
+
+    @track_id.connect
+    def _on_track_id_changed(self):
+        if getattr(self, "_tracks", None):
+            self._render_tracks_layer()
+
+    def _render_tracks_layer(self):
+        """(re)draws the tracks layer from `self._tracks`, filtered to the selected track."""
+        from napari_lattice.utils import get_viewer
+        from lls_core.trackmate_io import trackmate_tracks_to_napari
+
+        tracks = self._tracks
+        selected = self.track_id.value
+        if selected and selected != "All" and selected in tracks:
+            tracks = {selected: tracks[selected]}
+        data, properties = trackmate_tracks_to_napari(tracks)
+
         viewer = get_viewer()
-        name = self.layer_name.value.strip() or path.stem
+        name = self.layer_name.value.strip() or self.tracks_path.value.stem
+        if name in viewer.layers:
+            del viewer.layers[name]
         viewer.add_tracks(data, properties=properties, name=name, tail_width=2)
+
+    def _get_selected_track_data(self):
+        """
+        Returns the (t, x, y, z) array for the single currently-selected track,
+        or None if no file is loaded or 'All' is selected. Used by downstream
+        processing.
+        """
+        tracks = getattr(self, "_tracks", None)
+        if not tracks or self.track_id.value in (None, "All", ""):
+            return None
+        return tracks[self.track_id.value]["trackData"]
 
     def _make_model(self):
         # Return None as this field group's primary purpose is to load tracks, not to produce a model.
