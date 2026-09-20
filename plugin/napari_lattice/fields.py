@@ -899,6 +899,12 @@ class OutputFields(NapariFieldGroup):
 
 @magicclass
 class TrackmateFields(NapariFieldGroup):
+    header = field(dedent("""
+        Load a TrackMate export to view its tracks. Enable to make the run follow a specific 
+        track: at each timepoint the crop is a box centred on the tracked object, instead of
+        a fixed region.
+    """), widget_type="Label")
+    fields_enabled = field(False, label="Enabled")
     tracks_path = field(Path).with_options(
         label="TrackMate tracks file",
         tooltip="Path to a TrackMate 'tracks-only' XML export, or a 'spots in tracks statistics' CSV export"
@@ -918,6 +924,19 @@ class TrackmateFields(NapariFieldGroup):
         value="All",
         tooltip="Isolate a single track by ID, or 'All' to show every track in the file"
     )
+    window_size = field(30.0).with_options(
+        label="Crop Window (µm)",
+        tooltip="Width and height of the box cropped at each timepoint, centred on the track.",
+        min=0.0,
+        step=1.0,
+    )
+
+    @fields_enabled.connect
+    @enable_if([window_size])
+    def _enable_tracked_crop(self, enabled: bool) -> bool:
+        # Only the crop settings are gated: loading a file and browsing its tracks
+        # stays available whether or not the run is going to follow one.
+        return enabled
 
     @set_design(text="Load TrackMate tracks")
     def load_tracks(self):
@@ -965,6 +984,21 @@ class TrackmateFields(NapariFieldGroup):
             return None
         return tracks[self.track_id.value]["trackData"]
 
-    def _make_model(self):
-        # Return None as this field group's primary purpose is to load tracks, not to produce a model.
-        return None
+    def _make_model(self) -> Optional[CropParams]:
+        """
+        The cropping parameters for a run that follows the selected track, or None
+        when this tab is only being used to look at the tracks.
+        """
+        from lls_core.cropping import track_to_rois
+
+        if not self.fields_enabled.value:
+            return None
+        track = self._get_selected_track_data()
+        if track is None:
+            raise ValueError(
+                "Choose a single track to crop along. 'All' only displays the tracks."
+            )
+        return CropParams(
+            roi_by_time=track_to_rois(track, self.window_size.value),
+            roi_units=RoiUnits.Microns,
+        )

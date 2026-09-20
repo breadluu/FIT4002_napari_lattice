@@ -1,4 +1,4 @@
-from typing_extensions import Any, Iterable, List, Tuple
+from typing_extensions import Any, Dict, Iterable, List, Optional, Tuple
 from pydantic.v1 import Field, NonNegativeInt, root_validator, validator
 from lls_core.models.utils import FieldAccessModel
 from lls_core.cropping import Roi, RoiUnits
@@ -32,12 +32,32 @@ class CropParams(FieldAccessModel):
         description="The range of Z slices to take as a tuple of the form `(first, last)`. All Z slices before the first index or after the last index will be cropped out.",
         cli_description="An array with two items, indicating the index of the first and last Z slice to include."
     )
+    roi_by_time: Optional[Dict[int, Roi]] = Field(
+        default=None,
+        description="One region of interest per timepoint, for a crop that follows a tracked object rather than staying still. ",
+    )
 
     @property
     def selected_rois(self) -> Iterable[Roi]:
         "Returns the relevant ROIs that should be processed"
         for i in self.roi_subset:
             yield self.roi_list[i]
+
+    def roi_for_time(self, time: int, roi_index: int) -> Roi:
+        """
+        The crop window at `time`. Only a track-driven crop moves, every 
+        other crop uses the same crop window at every timepoint.
+        """
+        if self.roi_by_time is None:
+            return self.roi_list[roi_index]
+        try:
+            return self.roi_by_time[time]
+        except KeyError:
+            raise ValueError(
+                f"The track has no position at timepoint {time}; it covers timepoints "
+                f"{min(self.roi_by_time)}-{max(self.roi_by_time)}. Restrict the time "
+                "range to the timepoints the track covers."
+            ) from None
 
     @root_validator(pre=True)
     def resolve_roi_units(cls, values: dict) -> dict:
@@ -60,8 +80,26 @@ class CropParams(FieldAccessModel):
                 "roi_list mixes file types that imply different units "
                 f"({sorted(implied)}); set roi_units explicitly"
             )
-        # No files (coordinates passed directly) means pixels, the API's unit.
-        values["roi_units"] = implied.pop() if implied else RoiUnits.Pixels
+        if implied:
+            values["roi_units"] = implied.pop()
+        elif values.get("roi_by_time"):
+            # Track ROIs come from TrackMate, which uses microns.
+            values["roi_units"] = RoiUnits.Microns
+        else:
+            # No files (coordinates passed directly) means pixels, the API's unit.
+            values["roi_units"] = RoiUnits.Pixels
+        return values
+
+    @root_validator(pre=True)
+    def seed_roi_list_from_track(cls, values: dict) -> dict:
+        """
+        When cropping follows a track, roi_list gets left empty, but other code that uses
+        it expects roi_list to have at least one entry. This just seeds it with the first
+        ROI to keep the code from breaking. This does not effect cropping.
+        """
+        by_time = values.get("roi_by_time")
+        if by_time and not values.get("roi_list"):
+            values["roi_list"] = [by_time[min(by_time)]]
         return values
 
     @validator("roi_list", pre=True)

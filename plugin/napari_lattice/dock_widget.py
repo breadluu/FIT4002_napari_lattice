@@ -59,6 +59,21 @@ class LLSZWidget(MagicTemplate):
         self["save"].enabled = enabled
         self["preview"].enabled = enabled
 
+    def _make_crop_model(self):
+        """
+        The crop to run, from whichever tab defines one: a fixed region from the Crop
+        tab, or a region that follows a track from the ROI Tracking tab. Only one crop
+        can apply to a run, so asking for both is refused.
+        """
+        fixed = self.LlszMenu.WidgetContainer.cropping_fields._make_model()
+        tracked = self.LlszMenu.WidgetContainer.trackmate_fields._make_model()
+        if fixed is not None and tracked is not None:
+            raise ValueError(
+                "The Crop tab and the ROI Tracking tab are both set to crop, and a run "
+                "can only use one. Disable one."
+            )
+        return tracked if tracked is not None else fixed
+
     def _make_model(self, validate: bool = True) -> LatticeData:
         from rich import print
         from sys import stdout
@@ -88,7 +103,7 @@ class LLSZWidget(MagicTemplate):
 
             workflow=self.LlszMenu.WidgetContainer.workflow_fields._make_model(),
             deconvolution=self.LlszMenu.WidgetContainer.deconv_fields._make_model(),
-            crop=self.LlszMenu.WidgetContainer.cropping_fields._make_model()
+            crop=self._make_crop_model()
         )
         # Log the lattice
         print(params, file=stdout)

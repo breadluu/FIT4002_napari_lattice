@@ -239,9 +239,29 @@ class LatticeData(OutputParams, DeskewParams):
             return v
         with ignore_keyerror():
             # dy for both axes, matching the plugin's own shape-to-ROI conversion.
-            v.roi_list = scale_rois(v.roi_list, 1 / values["physical_pixel_sizes"].Y)
+            factor = 1 / values["physical_pixel_sizes"].Y
+            v.roi_list = scale_rois(v.roi_list, factor)
+            if v.roi_by_time is not None:
+                times = list(v.roi_by_time)
+                scaled = scale_rois([v.roi_by_time[time] for time in times], factor)
+                v.roi_by_time = dict(zip(times, scaled))
             # Mark the conversion done, so re-validating a copy cannot repeat it.
             v.roi_units = RoiUnits.Pixels
+        return v
+
+    @validator("crop")
+    def keep_track_rois_in_frame(cls, v: Optional[CropParams], values: dict) -> Optional[CropParams]:
+        """
+        Keeps an ROI crop window from drifting outside the deskewed image.
+        """
+        from lls_core.cropping import clamp_rois_to_image
+        from lls_core.models.utils import ignore_keyerror
+
+        if v is None or v.roi_by_time is None:
+            return v
+        with ignore_keyerror():
+            height, width = values["derived"].deskew_vol_shape[1:]
+            v.roi_by_time = clamp_rois_to_image(v.roi_by_time, height, width)
         return v
 
     @validator("crop")
@@ -257,8 +277,11 @@ class LatticeData(OutputParams, DeskewParams):
             return v
         with ignore_keyerror():
             height, width = values["derived"].deskew_vol_shape[1:]
-            worst_y = max(y for roi in v.roi_list for y, _ in roi)
-            worst_x = max(x for roi in v.roi_list for _, x in roi)
+            # An ROI's crop window can wander off the image at some timepoints but not
+            # others, so every timepoint's crop window has to be considered, not just `roi_list`.
+            rois = list(v.roi_list) + list((v.roi_by_time or {}).values())
+            worst_y = max(y for roi in rois for y, _ in roi)
+            worst_x = max(x for roi in rois for _, x in roi)
             if worst_y > height or worst_x > width:
                 logger.warning(
                     "ROIs extend to (%.0f, %.0f) but the deskewed image is only "
@@ -373,6 +396,40 @@ class LatticeData(OutputParams, DeskewParams):
         if v is not None and (min(v) < 0 or max(v) > values["input_image"].sizes["T"]):
             raise ValueError("The output time range must be a subset of the total available time points")
         return v
+
+
+    @root_validator(skip_on_failure=True)
+    def restrict_time_range_to_track(cls, values: dict) -> dict:
+        """
+        Confine the run to the timepoints a track-driven crop covers, as those are the
+        only ones it has a rectangle for. A narrower range asked for by the user is
+        kept. A range that misses the track, or a track with holes in it, is reported
+        here rather than part-way through a long run.
+        """
+        crop = values.get("crop")
+        time_range = values.get("time_range")
+        if crop is None or crop.roi_by_time is None or time_range is None:
+            return values
+
+        covered = range(min(crop.roi_by_time), max(crop.roi_by_time) + 1)
+        start = max(time_range.start, covered.start)
+        stop = min(time_range.stop, covered.stop)
+        if start >= stop:
+            raise ValueError(
+                f"The time range {time_range.start}-{time_range.stop - 1} does not overlap "
+                f"the track, which covers timepoints {covered.start}-{covered.stop - 1}"
+            )
+
+        missing = [time for time in range(start, stop) if time not in crop.roi_by_time]
+        if missing:
+            raise ValueError(
+                f"The track has no position at timepoints {missing}, so there is nothing to "
+                "centre the crop on there. Close the gaps in the track, or ask for a time "
+                "range that avoids them."
+            )
+
+        values["time_range"] = range(start, stop)
+        return values
 
     @validator("deconvolution")
     def check_psfs(cls, v: Optional[DeconvolutionParams], values: dict):
@@ -539,7 +596,7 @@ class LatticeData(OutputParams, DeskewParams):
         
         for slice in self.iter_slices():
             roi_index = cast(int, slice.roi_index)
-            roi = self.crop.roi_list[roi_index]
+            roi = self.crop.roi_for_time(slice.time, roi_index)
             deconv_args: dict[Any, Any] = {}
             if self.deconvolution is not None:
                 deconv_args = dict(

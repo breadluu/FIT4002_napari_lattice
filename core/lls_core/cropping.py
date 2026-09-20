@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, NamedTuple, Tuple, List
+from typing import TYPE_CHECKING, Dict, NamedTuple, Tuple, List
 
 from strenum import StrEnum
 
@@ -123,6 +123,46 @@ def scale_rois(rois: List[Roi], factor: float) -> List[Roi]:
         Roi(*[(y * factor, x * factor) for y, x in roi])
         for roi in rois
     ]
+
+
+def track_to_rois(track_data: NDArray, window_size: float) -> Dict[int, Roi]:
+    """
+    Takes a track (one x,y per timepoint t, in microns) and turns each point into a 
+    fixed size crop window centered on that point.
+
+    CURRENTLY: Timepoints the track does not cover are absent from the result rather
+    than interpolated. Z is also not used.
+    """
+    half = window_size / 2
+    rois: Dict[int, Roi] = {}
+    for t, x, y, _z in track_data:
+        top, bottom = y - half, y + half
+        left, right = x - half, x + half
+        rois[int(t)] = Roi((top, left), (top, right), (bottom, right), (bottom, left))
+    return rois
+
+
+def clamp_rois_to_image(rois: Dict[int, Roi], height: float, width: float) -> Dict[int, Roi]:
+    """
+    Takes a set of per-timepoint crop windows and slides each one back inside the
+    image bounds if it's hanging off an edge, without changing it's size. Otherwise,
+    a moving crop that does this would be trimmed there, and frames that differ in
+    size cannot be written as one image. A crop window larger than the image still 
+    gets trimmed, but identically at every timepoint, so each frame still matches.
+    """
+    clamped: Dict[int, Roi] = {}
+    for time, roi in rois.items():
+        ys = [y for y, _ in roi]
+        xs = [x for _, x in roi]
+        top, bottom, left, right = min(ys), max(ys), min(xs), max(xs)
+
+        shift_y = -top if top < 0 else (height - bottom if bottom > height else 0.0)
+        shift_x = -left if left < 0 else (width - right if right > width else 0.0)
+
+        top, bottom = top + shift_y, bottom + shift_y
+        left, right = left + shift_x, right + shift_x
+        clamped[time] = Roi((top, left), (top, right), (bottom, right), (bottom, left))
+    return clamped
 
 
 def read_imagej_roi(roi_path: PathLike) -> List[Roi]:
