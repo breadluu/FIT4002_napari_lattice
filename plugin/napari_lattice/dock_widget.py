@@ -116,7 +116,7 @@ class LLSZWidget(MagicTemplate):
         <div>
         Specify deskewing parameters and image layers in Tab 1.&nbsp;
         Additional analysis parameters can be configured in the other tabs.&nbsp;
-        When you are ready to save,&nbsp;go to Tab 5.&nbsp;
+        When you are ready to save,&nbsp;go to Tab 6.&nbsp;
         Output to specify the output directory.&nbsp;
         For more information,&nbsp;<a href="https://bioimageanalysiscorewehi.github.io/napari_lattice/">please refer to the documentation here</a>.
         </div>
@@ -145,9 +145,9 @@ class LLSZWidget(MagicTemplate):
                 tab_widget: QTabWidget= self._widget._tab_widget
                 # Manually set the tab labels, because by default magicgui uses the widget names, but setting
                 # the names to human readable text makes them difficult to access via self
-                for i, label in enumerate(["1. Deskew", "2. Deconvolution", "3. Crop", "4. Workflow", "5. Output", "6. ROI Tracking"]):
+                for i, label in enumerate(["1. Deskew", "2. Deconvolution", "3. Crop", "4. ROI Tracking", "5. Workflow", "6. Output"]):
                     tab_widget.setTabText(i, label)
-                for field in [self.deskew_fields, self.deconv_fields, self.cropping_fields, self.workflow_fields, self.output_fields, self.trackmate_fields]:
+                for field in [self.deskew_fields, self.deconv_fields, self.cropping_fields, self.trackmate_fields, self.workflow_fields, self.output_fields]:
                     # Connect event handlers
                     for subfield_name in dir(field):
                         subfield = getattr(field, subfield_name)
@@ -160,9 +160,9 @@ class LLSZWidget(MagicTemplate):
             deskew_fields = vfield(DeskewFields)
             deconv_fields = vfield(DeconvolutionFields)
             cropping_fields = vfield(CroppingFields)
+            trackmate_fields = vfield(TrackmateFields)
             workflow_fields = vfield(WorkflowFields)
             output_fields = vfield(OutputFields)
-            trackmate_fields = vfield(TrackmateFields)
 
     @set_options(header=dict(widget_type="Label", label="<h3>Preview Deskew</h3>"),
                 time=dict(label="Time:", max=2**15),
