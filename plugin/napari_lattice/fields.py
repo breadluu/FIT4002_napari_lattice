@@ -989,7 +989,6 @@ class TrackmateFields(NapariFieldGroup):
         The cropping parameters for a run that follows the selected track, or None
         when this tab is only being used to look at the tracks.
         """
-        from lls_core.cropping import track_to_rois
 
         if not self.fields_enabled.value:
             return None
