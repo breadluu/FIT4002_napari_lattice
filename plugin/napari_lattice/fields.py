@@ -999,6 +999,8 @@ class TrackmateFields(NapariFieldGroup):
                 "Choose a single track to crop along. 'All' only displays the tracks."
             )
         return CropParams(
-            roi_by_time=track_to_rois(track, self.window_size.value),
+            trackmate_file=self.tracks_path.value,
             roi_units=RoiUnits.Microns,
+            trackmate_track=self.track_id.value,
+            trackmate_window_size=self.window_size.value
         )

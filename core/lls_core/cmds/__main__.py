@@ -45,6 +45,9 @@ CLI_PARAM_MAP = {
     "roi_units": ["crop", "roi_units"],
     "roi_subset": ["crop", "roi_subset"],
     "z_range": ["crop", "z_range"],
+    "track_file": ["crop","trackmate_file"],
+    "track_track": ["crop","trackmate_track"],
+    "track_crop_size": ["crop","trackmate_window_size"], 
     "decon_processing": ["deconvolution", "decon_processing"],
     "psf": ["deconvolution", "psf"],
     "decon_num_iter": ["deconvolution", "decon_num_iter"],
@@ -113,6 +116,7 @@ def parse_roi_subset(value: Optional[List[str]]) -> Optional[List[int]]:
             except ValueError:
                 raise BadParameter(f"ROI subset indices must be integers; got {piece!r}")
     return result
+
 
 def handle_merge(values: list):
     if len(values) > 1:
@@ -195,6 +199,10 @@ def process(
     ),
     roi_subset: List[str] = field_from_model(CropParams, "roi_subset", extra_description="Accepts either repeated flags (--roi-subset 2 --roi-subset 5) or a comma-separated list (--roi-subset 2,5,7).", default=[], callback=parse_roi_subset),
     z_range: Optional[Tuple[int,int]] = field_from_model(CropParams, "z_range", show_default=False),
+    
+    track_file: Path = field_from_model(CropParams,"trackmate_file",show_default = False ),
+    track_track: int = field_from_model(CropParams,"trackmate_track"),
+    track_crop_size: float = field_from_model(CropParams,"trackmate_window_size"),
     
     enable_deconvolution: bool = Option(False, "--deconvolution/--disable-deconvolution", rich_help_panel="Deconvolution"),
     decon_processing: DeconvolutionChoice = field_from_model(DeconvolutionParams, "decon_processing", rich_help_panel="Deconvolution"),

@@ -1,7 +1,8 @@
-from typing_extensions import Any, Dict, Iterable, List, Optional, Tuple
+from typing_extensions import Any, Dict, Iterable, List, Optional, Tuple, Union
 from pydantic.v1 import Field, NonNegativeInt, root_validator, validator
 from lls_core.models.utils import FieldAccessModel
 from lls_core.cropping import Roi, RoiUnits
+from pathlib import Path
 
 class CropParams(FieldAccessModel):
     """
@@ -13,6 +14,21 @@ class CropParams(FieldAccessModel):
     `roi_list` is always in deskewed-image pixels. A file given in microns is
     converted on the way in, once the pixel size is known - see `roi_units`.
     """
+    trackmate_file: Path = Field(
+        description="File path to the Trackmate file for tracked ROIs. Accepts .xml or .csv files.",
+        cli_description= "File path to the Trackmate file for tracked ROIs. Accepts .xml or .csv files.",
+        default = None
+    )
+    trackmate_track: str = Field(
+        description="track number for the TrackMate tracking ROIs",
+        cli_description="track number for the TrackMate tracking ROIs",
+        default = '0'
+    )
+    trackmate_window_size: float = Field(
+        description="cropping window size for TrackMate ROIs, defines the `N × N` square that defines the crop size in μm",
+        cli_description="cropping window size for TrackMate ROIs in μm",
+        default = 30
+    )
     roi_list: List[Roi] = Field(
         description="List of regions of interest, each of which must be an `N × D` array, where N is the number of vertices and D the coordinates of each vertex. This can alternatively be provided as a `str` or `Path`, or a list of those, in which case they are interpreted as paths to ImageJ ROI (.roi/.zip) or napari shapes (.csv) files that are read from disk.",
         cli_description="List of regions of interest, each of which must be the file path to an ImageJ ROI (.roi/.zip) or napari shapes (.csv) file.",
@@ -58,6 +74,33 @@ class CropParams(FieldAccessModel):
                 f"{min(self.roi_by_time)}-{max(self.roi_by_time)}. Restrict the time "
                 "range to the timepoints the track covers."
             ) from None
+        
+    @root_validator()
+    def set_roi_by_time(cls,values: dict) -> dict:
+        """
+        set roi by time when using trackmate tracking
+        """
+        from lls_core.cropping import track_to_rois
+        from lls_core.trackmate_io import load_trackmate_tracks
+        path = values.get("trackmate_file")
+        #if no path has been given not using trackmate
+        if path is None or values.get("roi_by_time"):
+            return values
+        if not path.exists(): 
+            raise FileNotFoundError(f"TrackMate File not found: {path}")
+        #set roi-subset
+        values["roi_subset"]=[0]
+        #load tracks from file
+        tracks = load_trackmate_tracks(path)
+        track = tracks[values.get("trackmate_track")]["trackData"]
+        values["roi_by_time"]=track_to_rois(track, values.get("trackmate_window_size"))
+        #seeding roi list so code doesn't break
+        by_time = values.get("roi_by_time")
+        if by_time and not values.get("roi_list"):
+            values["roi_list"] = [by_time[min(by_time)]]
+        return values
+
+        
 
     @root_validator(pre=True)
     def resolve_roi_units(cls, values: dict) -> dict:
@@ -82,7 +125,7 @@ class CropParams(FieldAccessModel):
             )
         if implied:
             values["roi_units"] = implied.pop()
-        elif values.get("roi_by_time"):
+        elif values.get("roi_by_time") or values.get("trackmate_file"):
             # Track ROIs come from TrackMate, which uses microns.
             values["roi_units"] = RoiUnits.Microns
         else:
@@ -110,7 +153,6 @@ class CropParams(FieldAccessModel):
         # Allow a single path
         if is_pathlike(v):
             v = [v]
-
         rois: List[Roi] = []
         for item in v:
             if is_pathlike(item):

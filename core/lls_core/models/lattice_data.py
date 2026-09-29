@@ -261,7 +261,7 @@ class LatticeData(OutputParams, DeskewParams):
             return v
         with ignore_keyerror():
             height, width = values["derived"].deskew_vol_shape[1:]
-            v.roi_by_time = clamp_rois_to_image(v.roi_by_time, height, width)
+            v.roi_by_time = clamp_rois_to_image(v.roi_by_time, height, width,v.trackmate_window_size)
         return v
 
     @validator("crop")
@@ -591,12 +591,14 @@ class LatticeData(OutputParams, DeskewParams):
         """
         Yields processed image slices with cropping enabled
         """
+        from lls_core.cropping import clamp_roi_to_image
         if self.crop is None:
             raise Exception("This function can only be called when crop is set")
-        
         for slice in self.iter_slices():
             roi_index = cast(int, slice.roi_index)
             roi = self.crop.roi_for_time(slice.time, roi_index)
+            height, width = self.derived.deskew_vol_shape[1:]
+            roi = clamp_roi_to_image(roi, height, width,self.crop.trackmate_window_size)
             deconv_args: dict[Any, Any] = {}
             if self.deconvolution is not None:
                 deconv_args = dict(
