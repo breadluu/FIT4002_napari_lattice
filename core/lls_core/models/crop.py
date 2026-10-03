@@ -35,7 +35,7 @@ class CropParams(FieldAccessModel):
         cli_description="Units of the ROI coordinates. 'Auto' (default) reads .roi/.zip as Pixels and .csv as Microns.",
     )
     roi_subset: List[Union[int, str]] = Field(
-        description="A subset of all the ROIs to process. Each list item should be an index into the ROI list indicating an ROI to include. This allows you to process only a subset of the regions from a ROI file specified using the `roi_list` parameter. If `None`, it is assumed that you want to process all ROIs.",
+        description="A subset of all the ROIs/Tracks to process. Each list item should be an index into the ROI list or Tracks in a Trackmate file indicating an ROI/Track to include. This allows you to process only a subset of the regions from a ROI/Tracking file specified using the `roi_list` parameter. If `None`, it is assumed that you want to process all ROIs/Tracks.",
         default=None
     )
     z_range: Tuple[NonNegativeInt, NonNegativeInt] = Field(

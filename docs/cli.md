@@ -3,7 +3,6 @@
 ::: mkdocs-click
     :module: lls_core.cmds.__main__
     :command: click_app
-    :prog_name: lls-pipeline
 
 ## ROI files and units (`--roi-list`, `--roi-units`)
 
@@ -31,6 +30,21 @@ The value is case-insensitive and accepts either singular or plural (`pixel`,
     can still land inside the image and be processed without error. A warning is
     logged if any ROI falls outside the deskewed image, but the reliable check is to
     leave `--roi-units` on `Auto`.
+
+
+### TrackMate Integration (`--roi-list`,`--track-crop-size`)
+Cropping based off of TrackMate data works through `--roi-list` accepting both `xml` or `csv` files from TrackMate. When using TrackMate data for cropping only a single tracking file is supported.
+TrackMate files must follow the appropriate format to be accepted as a TrackMate file. 
+```bash
+.csv files require the headers: {"TRACK_ID", "POSITION_X", "POSITION_Y", "POSITION_Z", "FRAME"}.
+```
+```bash
+.xml files require the root tag: "Tracks".
+```
+Files that do not match these will not be correctly processed.
+
+
+the crop will create a N by N box defined by `--track-crop-size` given in microns, defaulting to 30, centering on the tracking datum at each time point. if a crop would otherwise overrun the deskewed images bounds it will be shifted such that it remains entirely within the image bounds.
 
 ## Coverslip-frame deskew (`--no-coverslip-rotation`)
 
