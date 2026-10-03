@@ -34,6 +34,7 @@ uses (z, y, x), matching image-axis order.
 from __future__ import annotations
 
 import csv
+import io
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Tuple, Union
@@ -211,34 +212,22 @@ def tracks_exist(path: PathLike) -> bool:
     tracks = load_trackmate_tracks(path)
     return len(tracks) > 0
 
-def is_trackmate_file_xml(xml_path: PathLike) -> bool:
+def is_trackmate_file_xml(xml_file: ET.ElementTree) -> bool:
     """check if an xml file is a trackmate file"""
-    xml_path = Path(xml_path)
-    if not xml_path.is_file():
-        raise FileNotFoundError(f"TrackMate XML file not found: {xml_path}")
-
-    try:
-        tree = ET.parse(xml_path)
-    except ET.ParseError as exc:
-        raise ValueError(f"Could not parse '{xml_path}' as XML: {exc}") from exc
-
-    root = tree.getroot()
+    
+    root = xml_file.getroot()
     if root.tag == "Tracks":
         return True
     return False
 
-def is_trackmate_file_csv(csv_path: PathLike) -> bool:
+def is_trackmate_file_csv(csv_file: io.IOBase) -> bool:
     """check if a csv file is a trackmate file"""
-    csv_path = Path(csv_path)
-    if not csv_path.is_file():
-        raise FileNotFoundError(f"TrackMate CSV file not found: {csv_path}")
-
     required = {"TRACK_ID", "POSITION_X", "POSITION_Y", "POSITION_Z", "FRAME"}
-    with open(csv_path, newline="") as handle:
-        reader = csv.DictReader(handle)
-        missing = required - set(reader.fieldnames or [])
-        if not missing:
-            return True
+
+    reader = csv.DictReader(csv_file)
+    missing = required - set(reader.fieldnames or [])
+    if not missing:
+        return True
     return False
 
 
@@ -247,11 +236,40 @@ def is_trackmate_file(path: PathLike) -> bool:
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".xml":
-        return is_trackmate_file_xml(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"TrackMate file not found: {path}")
+        try:
+            tree = ET.parse(path)
+        except ET.ParseError as exc:
+            raise ValueError(f"Could not parse '{path}' as XML: {exc}") from exc
+        return is_trackmate_file_xml(tree)
     if suffix == ".csv":
-        return is_trackmate_file_csv(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"TrackMate file not found: {path}")
+        with open(path, newline="") as file:
+            return is_trackmate_file_csv(file)
     return False
 
+def zip_contains_trackmate_file(path: PathLike) -> bool:
+    """catch trackmate files in zip files"""
+    import zipfile
+    contains_trackmate = False
+    with zipfile.ZipFile(Path(path), "r") as zip_files:
+        for file_name in zip_files.namelist():
+            path = Path(file_name)
+            suffix = path.suffix.lower()
+            if suffix == ".xml":
+                with zip_files.open(file_name) as file:
+                    try:
+                        tree = ET.parse(file)
+                    except ET.ParseError as exc:
+                        raise ValueError(f"Could not parse '{path}' as XML: {exc}") from exc
+                    contains_trackmate = is_trackmate_file_xml(tree) if not contains_trackmate else contains_trackmate
+            if suffix == ".csv":
+                with zip_files.open(file_name) as raw_file:
+                    file = io.TextIOWrapper(raw_file,newline="")
+                    contains_trackmate = is_trackmate_file_csv(file) if not contains_trackmate else contains_trackmate
+    return contains_trackmate
 
 def trackmate_tracks_to_napari(
     tracks: Dict[str, dict],

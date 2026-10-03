@@ -222,11 +222,15 @@ def read_imagej_roi(roi_path: PathLike) -> List[Roi]:
     from pathlib import Path
     from os import fspath
     from read_roi import read_roi_file, read_roi_zip
+    from lls_core.trackmate_io import zip_contains_trackmate_file
 
     roi_path = Path(fspath(roi_path))
 
     # handle reading single roi or collection of rois in zip file
     if roi_path.suffix == ".zip":
+        #check if zip file contains a trackmate file
+        if zip_contains_trackmate_file(roi_path):
+            raise ValueError("Tracking Based ROI cropping incompatible with predefined ROIs")
         ij_roi = read_roi_zip(roi_path)
     elif roi_path.suffix == ".roi":
         ij_roi = read_roi_file(str(roi_path))

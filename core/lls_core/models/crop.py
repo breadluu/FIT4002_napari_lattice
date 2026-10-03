@@ -82,6 +82,9 @@ class CropParams(FieldAccessModel):
                 path = Path(values.get("roi_list")[0])
                 if not path.exists(): 
                     raise FileNotFoundError(f"TrackMate File not found: {path}")
+                if len(values.get("roi_list")) > 1:
+                    """if multiple roi files inputted when using trackmate file raise error"""
+                    raise ValueError("Tracking Based ROI cropping does not support multiple input files")
                 values["trackmate_file"] = path
         return values 
         
@@ -158,6 +161,9 @@ class CropParams(FieldAccessModel):
             rois: List[Roi] = []
             for item in v:
                 if is_pathlike(item):
+                    if is_trackmate_file(item):
+                        """if trackmate file provided while using constant ROIs raise error"""
+                        raise ValueError("Tracking Based ROI cropping incompatible with predefined ROIs")
                     rois += read_rois(item)
                 elif isinstance(item, ndarray):
                     rois.append(Roi.from_array(item))
