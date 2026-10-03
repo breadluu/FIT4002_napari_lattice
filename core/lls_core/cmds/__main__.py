@@ -46,7 +46,6 @@ CLI_PARAM_MAP = {
     "roi_units": ["crop", "roi_units"],
     "roi_subset": ["crop", "roi_subset"],
     "z_range": ["crop", "z_range"],
-    "track_file": ["crop","trackmate_file"],
     "track_crop_size": ["crop","trackmate_window_size"], 
     "decon_processing": ["deconvolution", "decon_processing"],
     "psf": ["deconvolution", "psf"],
@@ -202,7 +201,6 @@ def process(
     roi_subset: List[str] = field_from_model(CropParams, "roi_subset", extra_description="Accepts either repeated flags (--roi-subset 2 --roi-subset 5) or a comma-separated list (--roi-subset 2,5,7).", default=[], callback=parse_roi_subset),
     z_range: Optional[Tuple[int,int]] = field_from_model(CropParams, "z_range", show_default=False),
     
-    track_file: Path = field_from_model(CropParams,"trackmate_file",show_default = False ),
     track_crop_size: float = field_from_model(CropParams,"trackmate_window_size",default=30.0),
     
     enable_deconvolution: bool = Option(False, "--deconvolution/--disable-deconvolution", rich_help_panel="Deconvolution"),

@@ -71,15 +71,19 @@ class CropParams(FieldAccessModel):
             ) from None
         
 
-    @validator("trackmate_file",pre=True)
-    def set_track_path(cls,v:any):
+    @root_validator(pre=True)
+    def set_track_path(cls,values:dict):
+        from lls_core.types import is_pathlike
+        from lls_core.trackmate_io import is_trackmate_file
         #if no path has been given not using trackmate
-        if v is None:
-            return v
-        path = Path(v)
-        if not path.exists(): 
-            raise FileNotFoundError(f"TrackMate File not found: {path}")
-        return path 
+        
+        if not values.get("trackmate_file"):
+            if is_pathlike(values.get("roi_list")[0]) and is_trackmate_file(values.get("roi_list")[0]):
+                path = Path(values.get("roi_list")[0])
+                if not path.exists(): 
+                    raise FileNotFoundError(f"TrackMate File not found: {path}")
+                values["trackmate_file"] = path
+        return values 
         
     @root_validator()
     def set_roi_by_time(cls,values: dict) -> dict:
@@ -88,7 +92,7 @@ class CropParams(FieldAccessModel):
         """
         from lls_core.cropping import track_to_rois
         from lls_core.trackmate_io import load_trackmate_tracks
-        path = Path(values.get("trackmate_file"))
+        path = Path(values.get("trackmate_file")) if values.get("trackmate_file") else None
         #if no path has been given not using trackmate
         if path is None or values.get("roi_by_time"):
             return values
@@ -113,7 +117,7 @@ class CropParams(FieldAccessModel):
         """
         from lls_core.cropping import units_for_path
         from lls_core.types import is_pathlike
-
+        
         if values.get("roi_units", RoiUnits.Auto) != RoiUnits.Auto:
             return values
 
@@ -141,27 +145,33 @@ class CropParams(FieldAccessModel):
         from lls_core.types import is_pathlike
         from lls_core.cropping import read_rois
         from numpy import ndarray
-        # Allow a single path
-        if is_pathlike(v):
-            v = [v]
-        rois: List[Roi] = []
-        for item in v:
-            if is_pathlike(item):
-                rois += read_rois(item)
-            elif isinstance(item, ndarray):
-                rois.append(Roi.from_array(item))
-            elif isinstance(item, Roi):
-                rois.append(item)
-            else:
-                # Try converting an iterable to ROI
-                try:
-                    rois.append(Roi(*item))
-                except:
-                    raise ValueError(f"{item} cannot be intepreted as an ROI")
-
-        if len(rois) < 1 and len(values.get("roi_by_time")) < 1:
+        from lls_core.trackmate_io import is_trackmate_file,tracks_exist
+        #catch trackmate file
+        if values.get("trackmate_file"):
+            if not tracks_exist(values.get("trackmate_file")):
+                raise ValueError("At least one region of interest must be specified if cropping is enabled")
+            return [Roi((0,0),(0,0),(0,0),(0,0))]
+        else:
+            # Allow a single path
+            if is_pathlike(v):
+                v = [v]
+            rois: List[Roi] = []
+            for item in v:
+                if is_pathlike(item):
+                    rois += read_rois(item)
+                elif isinstance(item, ndarray):
+                    rois.append(Roi.from_array(item))
+                elif isinstance(item, Roi):
+                    rois.append(item)
+                else:
+                    # Try converting an iterable to ROI
+                    try:
+                        rois.append(Roi(*item))
+                    except:
+                        raise ValueError(f"{item} cannot be intepreted as an ROI")
+        if not rois or len(rois) < 1:
             raise ValueError("At least one region of interest must be specified if cropping is enabled")
-
+        
         return rois
 
     @validator("roi_subset", pre=True)
@@ -188,15 +198,15 @@ class CropParams(FieldAccessModel):
     def default_roi_range(cls, values: dict):
         # If the roi/track range isn't provided, assume all rois/tracks should be processed
         from lls_core.trackmate_io import load_trackmate_tracks
-        
-        path = Path(values.get("trackmate_file"))
+        path = Path(values.get("trackmate_file")) if values.get("trackmate_file") else None
+
         subset = values.get("roi_subset")
         #if no path has been given not using trackmate
         if path is None:
             if subset is None and "roi_list" in values:
                 values["roi_subset"] = list(range(len(values["roi_list"])))
-        if not path.exists(): 
+        elif not path.exists(): 
             raise FileNotFoundError(f"TrackMate File not found: {path}")
-        if subset is None and "trackmate_file" in values:
+        elif subset is None and "trackmate_file" in values:
             values["roi_subset"] = list(load_trackmate_tracks(path).keys())
         return values

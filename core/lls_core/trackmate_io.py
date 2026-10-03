@@ -206,6 +206,53 @@ def load_trackmate_tracks(path: PathLike) -> Dict[str, dict]:
     )
 
 
+def tracks_exist(path: PathLike) -> bool:
+    """check if there is at least one track"""
+    tracks = load_trackmate_tracks(path)
+    return len(tracks) > 0
+
+def is_trackmate_file_xml(xml_path: PathLike) -> bool:
+    """check if an xml file is a trackmate file"""
+    xml_path = Path(xml_path)
+    if not xml_path.is_file():
+        raise FileNotFoundError(f"TrackMate XML file not found: {xml_path}")
+
+    try:
+        tree = ET.parse(xml_path)
+    except ET.ParseError as exc:
+        raise ValueError(f"Could not parse '{xml_path}' as XML: {exc}") from exc
+
+    root = tree.getroot()
+    if root.tag == "Tracks":
+        return True
+    return False
+
+def is_trackmate_file_csv(csv_path: PathLike) -> bool:
+    """check if a csv file is a trackmate file"""
+    csv_path = Path(csv_path)
+    if not csv_path.is_file():
+        raise FileNotFoundError(f"TrackMate CSV file not found: {csv_path}")
+
+    required = {"TRACK_ID", "POSITION_X", "POSITION_Y", "POSITION_Z", "FRAME"}
+    with open(csv_path, newline="") as handle:
+        reader = csv.DictReader(handle)
+        missing = required - set(reader.fieldnames or [])
+        if not missing:
+            return True
+    return False
+
+
+def is_trackmate_file(path: PathLike) -> bool:
+    """check if file is a trackmate file. if not it will be assumed to be a roi file"""
+    path = Path(path)
+    suffix = path.suffix.lower()
+    if suffix == ".xml":
+        return is_trackmate_file_xml(path)
+    if suffix == ".csv":
+        return is_trackmate_file_csv(path)
+    return False
+
+
 def trackmate_tracks_to_napari(
     tracks: Dict[str, dict],
 ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:

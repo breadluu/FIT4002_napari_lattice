@@ -282,8 +282,9 @@ class LatticeData(OutputParams, DeskewParams):
             # An ROI's crop window can wander off the image at some timepoints but not
             # others, so every timepoint's crop window has to be considered, not just `roi_list`.
             rois = list(v.roi_list) 
-            for roi in v.roi_by_time.values():
-                rois = rois + list((roi or {}).values())
+            if v.roi_by_time:
+                for roi in v.roi_by_time.values():
+                    rois = rois + list((roi or {}).values())
             worst_y = max(y for roi in rois for y, _ in roi)
             worst_x = max(x for roi in rois for _, x in roi)
             if worst_y > height or worst_x > width:
