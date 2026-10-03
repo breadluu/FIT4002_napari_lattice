@@ -193,7 +193,7 @@ def process(
         DefinedPixelSizes.get_default("X")
     )),
 
-    roi_list: List[Path] = field_from_model(CropParams, "roi_list"),
+    roi_list: List[Path] = field_from_model(CropParams, "roi_list",description="Either a list of regions of interest, each a file path to an ImageJ ROI (.roi/.zip) or napari shapes (.csv) file, or a singular trackmate tracking file, either a (.xml) or (.csv) file.",),
     roi_units: RoiUnits = field_from_model(
         CropParams, "roi_units",
         click_type=RoiUnitsChoice([unit.value for unit in RoiUnits], case_sensitive=False),

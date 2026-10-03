@@ -26,7 +26,7 @@ class CropParams(FieldAccessModel):
     )
     roi_list: List[Roi] = Field(
         description="List of regions of interest, each of which must be an `N × D` array, where N is the number of vertices and D the coordinates of each vertex. This can alternatively be provided as a `str` or `Path`, or a list of those, in which case they are interpreted as paths to ImageJ ROI (.roi/.zip) or napari shapes (.csv) files that are read from disk.",
-        cli_description="List of regions of interest, each of which must be the file path to an ImageJ ROI (.roi/.zip) or napari shapes (.csv) file.",
+        cli_description="Either a list of regions of interest, each a file path to an ImageJ ROI (.roi/.zip) or napari shapes (.csv) file, or a singular trackmate tracking file, either a (.xml) or (.csv) file.",
         default = []
     )
     roi_units: RoiUnits = Field(
