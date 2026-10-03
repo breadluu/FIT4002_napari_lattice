@@ -19,11 +19,6 @@ class CropParams(FieldAccessModel):
         cli_description= "File path to the Trackmate file for tracked ROIs. Accepts .xml or .csv files.",
         default = None
     )
-    trackmate_track: str = Field(
-        description="track number for the TrackMate tracking ROIs",
-        cli_description="track number for the TrackMate tracking ROIs",
-        default = '0'
-    )
     trackmate_window_size: float = Field(
         description="cropping window size for TrackMate ROIs, defines the `N × N` square that defines the crop size in μm",
         cli_description="cropping window size for TrackMate ROIs in μm",
@@ -39,7 +34,7 @@ class CropParams(FieldAccessModel):
         description="The units the `roi_list` coordinates are in. 'Auto' takes it from the file type: ImageJ ROIs are pixels, and a napari shapes CSV saved from the plugin's crop layer is microns, because that layer is unscaled while the image layer carries the pixel size. Set it explicitly for a CSV written by anything else.",
         cli_description="Units of the ROI coordinates. 'Auto' (default) reads .roi/.zip as Pixels and .csv as Microns.",
     )
-    roi_subset: List[int] = Field(
+    roi_subset: List[Union[int, str]] = Field(
         description="A subset of all the ROIs to process. Each list item should be an index into the ROI list indicating an ROI to include. This allows you to process only a subset of the regions from a ROI file specified using the `roi_list` parameter. If `None`, it is assumed that you want to process all ROIs.",
         default=None
     )
@@ -48,7 +43,7 @@ class CropParams(FieldAccessModel):
         description="The range of Z slices to take as a tuple of the form `(first, last)`. All Z slices before the first index or after the last index will be cropped out.",
         cli_description="An array with two items, indicating the index of the first and last Z slice to include."
     )
-    roi_by_time: Optional[Dict[int, Roi]] = Field(
+    roi_by_time:Dict[int,Dict[int, Roi]] = Field(
         default=None,
         description="One region of interest per timepoint, for a crop that follows a tracked object rather than staying still. ",
     )
@@ -67,13 +62,24 @@ class CropParams(FieldAccessModel):
         if self.roi_by_time is None:
             return self.roi_list[roi_index]
         try:
-            return self.roi_by_time[time]
+            return self.roi_by_time[roi_index][time]
         except KeyError:
             raise ValueError(
                 f"The track has no position at timepoint {time}; it covers timepoints "
-                f"{min(self.roi_by_time)}-{max(self.roi_by_time)}. Restrict the time "
+                f"{min(self.roi_by_time[roi_index])}-{max(self.roi_by_time[roi_index])}. Restrict the time "
                 "range to the timepoints the track covers."
             ) from None
+        
+
+    @validator("trackmate_file",pre=True)
+    def set_track_path(cls,v:any):
+        #if no path has been given not using trackmate
+        if v is None:
+            return v
+        path = Path(v)
+        if not path.exists(): 
+            raise FileNotFoundError(f"TrackMate File not found: {path}")
+        return path 
         
     @root_validator()
     def set_roi_by_time(cls,values: dict) -> dict:
@@ -82,22 +88,19 @@ class CropParams(FieldAccessModel):
         """
         from lls_core.cropping import track_to_rois
         from lls_core.trackmate_io import load_trackmate_tracks
-        path = values.get("trackmate_file")
+        path = Path(values.get("trackmate_file"))
         #if no path has been given not using trackmate
         if path is None or values.get("roi_by_time"):
             return values
         if not path.exists(): 
             raise FileNotFoundError(f"TrackMate File not found: {path}")
-        #set roi-subset
-        values["roi_subset"]=[0]
         #load tracks from file
         tracks = load_trackmate_tracks(path)
-        track = tracks[values.get("trackmate_track")]["trackData"]
-        values["roi_by_time"]=track_to_rois(track, values.get("trackmate_window_size"))
-        #seeding roi list so code doesn't break
-        by_time = values.get("roi_by_time")
-        if by_time and not values.get("roi_list"):
-            values["roi_list"] = [by_time[min(by_time)]]
+        #initialise dict
+        values["roi_by_time"] = {}
+        for id in values.get("roi_subset"):
+            track = tracks[str(id)]["trackData"]
+            values["roi_by_time"][id]=track_to_rois(track, values.get("trackmate_window_size"))
         return values
 
         
@@ -133,20 +136,8 @@ class CropParams(FieldAccessModel):
             values["roi_units"] = RoiUnits.Pixels
         return values
 
-    @root_validator(pre=True)
-    def seed_roi_list_from_track(cls, values: dict) -> dict:
-        """
-        When cropping follows a track, roi_list gets left empty, but other code that uses
-        it expects roi_list to have at least one entry. This just seeds it with the first
-        ROI to keep the code from breaking. This does not effect cropping.
-        """
-        by_time = values.get("roi_by_time")
-        if by_time and not values.get("roi_list"):
-            values["roi_list"] = [by_time[min(by_time)]]
-        return values
-
     @validator("roi_list", pre=True)
-    def read_roi(cls, v: Any) -> List[Roi]:
+    def read_roi(cls, v: Any,values) -> List[Roi]:
         from lls_core.types import is_pathlike
         from lls_core.cropping import read_rois
         from numpy import ndarray
@@ -168,7 +159,7 @@ class CropParams(FieldAccessModel):
                 except:
                     raise ValueError(f"{item} cannot be intepreted as an ROI")
 
-        if len(rois) == 0:
+        if len(rois) < 1 and len(values.get("roi_by_time")) < 1:
             raise ValueError("At least one region of interest must be specified if cropping is enabled")
 
         return rois
@@ -193,9 +184,19 @@ class CropParams(FieldAccessModel):
                 result.append(int(item))
         return result
     
-    @validator("roi_subset", pre=True, always=True)
-    def default_roi_range(cls, v: Any, values: dict):
-        # If the roi range isn't provided, assume all rois should be processed
-        if v is None and "roi_list" in values:
-            return list(range(len(values["roi_list"])))
-        return v
+    @root_validator(pre=True)
+    def default_roi_range(cls, values: dict):
+        # If the roi/track range isn't provided, assume all rois/tracks should be processed
+        from lls_core.trackmate_io import load_trackmate_tracks
+        
+        path = Path(values.get("trackmate_file"))
+        subset = values.get("roi_subset")
+        #if no path has been given not using trackmate
+        if path is None:
+            if subset is None and "roi_list" in values:
+                values["roi_subset"] = list(range(len(values["roi_list"])))
+        if not path.exists(): 
+            raise FileNotFoundError(f"TrackMate File not found: {path}")
+        if subset is None and "trackmate_file" in values:
+            values["roi_subset"] = list(load_trackmate_tracks(path).keys())
+        return values

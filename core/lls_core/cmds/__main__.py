@@ -9,6 +9,7 @@ from enum import auto
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from strenum import StrEnum
+import traceback
 
 from lls_core.models.lattice_data import LatticeData
 from lls_core.models.deskew import DeskewParams, DefinedPixelSizes
@@ -46,7 +47,6 @@ CLI_PARAM_MAP = {
     "roi_subset": ["crop", "roi_subset"],
     "z_range": ["crop", "z_range"],
     "track_file": ["crop","trackmate_file"],
-    "track_track": ["crop","trackmate_track"],
     "track_crop_size": ["crop","trackmate_window_size"], 
     "decon_processing": ["deconvolution", "decon_processing"],
     "psf": ["deconvolution", "psf"],
@@ -136,11 +136,13 @@ def rich_validation(e: ValidationError) -> Table:
     table.add_column("Parameter")
     # table.add_column("Command Line Argument")
     table.add_column("Error")
+    table.add_column("type")
 
     for error in e.errors():
         table.add_row(
             str(error["loc"][0]),
             str(error["msg"]),
+            str(error["type"])
         )
 
     return table
@@ -201,8 +203,7 @@ def process(
     z_range: Optional[Tuple[int,int]] = field_from_model(CropParams, "z_range", show_default=False),
     
     track_file: Path = field_from_model(CropParams,"trackmate_file",show_default = False ),
-    track_track: int = field_from_model(CropParams,"trackmate_track"),
-    track_crop_size: float = field_from_model(CropParams,"trackmate_window_size"),
+    track_crop_size: float = field_from_model(CropParams,"trackmate_window_size",default=30.0),
     
     enable_deconvolution: bool = Option(False, "--deconvolution/--disable-deconvolution", rich_help_panel="Deconvolution"),
     decon_processing: DeconvolutionChoice = field_from_model(DeconvolutionParams, "decon_processing", rich_help_panel="Deconvolution"),
@@ -271,18 +272,18 @@ def process(
         with yaml_config.open() as fp:
             from yaml import safe_load
             yaml_args = safe_load(fp)
-
     # Merge all three sources of config: YAML, JSON and CLI
     merged = merge_with(handle_merge, [yaml_args, json_args, cli_args])
     # On the CLI, default to 'auto' (0) worker selection when the user set no value
     # anywhere. The model default stays 1 (serial) so GUI/library callers are
     # unaffected; only an unconfigured CLI run opts into auto.
     merged.setdefault("process_parallel", 0)
-
+    
     try:
         lattice = LatticeData.parse_obj(merged)
     except ValidationError as e:
         console.print(rich_validation(e))
+        traceback.print_exc()
         raise Exit(code=1)
 
     # `estimate` and `process` are the same underlying command registered under

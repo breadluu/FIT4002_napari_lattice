@@ -234,7 +234,6 @@ class LatticeData(OutputParams, DeskewParams):
         """
         from lls_core.cropping import RoiUnits, scale_rois
         from lls_core.models.utils import ignore_keyerror
-
         if v is None or v.roi_units == RoiUnits.Pixels:
             return v
         with ignore_keyerror():
@@ -242,9 +241,10 @@ class LatticeData(OutputParams, DeskewParams):
             factor = 1 / values["physical_pixel_sizes"].Y
             v.roi_list = scale_rois(v.roi_list, factor)
             if v.roi_by_time is not None:
-                times = list(v.roi_by_time)
-                scaled = scale_rois([v.roi_by_time[time] for time in times], factor)
-                v.roi_by_time = dict(zip(times, scaled))
+                for id,roi  in v.roi_by_time.items():
+                    times = list(roi)
+                    scaled = scale_rois([roi[time] for time in times], factor)
+                    v.roi_by_time[id] = dict(zip(times, scaled))
             # Mark the conversion done, so re-validating a copy cannot repeat it.
             v.roi_units = RoiUnits.Pixels
         return v
@@ -261,7 +261,8 @@ class LatticeData(OutputParams, DeskewParams):
             return v
         with ignore_keyerror():
             height, width = values["derived"].deskew_vol_shape[1:]
-            v.roi_by_time = clamp_rois_to_image(v.roi_by_time, height, width,v.trackmate_window_size)
+            for id,roi in v.roi_by_time.items():
+                v.roi_by_time[id] = clamp_rois_to_image(roi, height, width,v.trackmate_window_size)
         return v
 
     @validator("crop")
@@ -279,7 +280,9 @@ class LatticeData(OutputParams, DeskewParams):
             height, width = values["derived"].deskew_vol_shape[1:]
             # An ROI's crop window can wander off the image at some timepoints but not
             # others, so every timepoint's crop window has to be considered, not just `roi_list`.
-            rois = list(v.roi_list) + list((v.roi_by_time or {}).values())
+            rois = list(v.roi_list) 
+            for roi in v.roi_by_time.values():
+                rois = rois + list((roi or {}).values())
             worst_y = max(y for roi in rois for y, _ in roi)
             worst_x = max(x for roi in rois for _, x in roi)
             if worst_y > height or worst_x > width:
@@ -407,28 +410,30 @@ class LatticeData(OutputParams, DeskewParams):
         here rather than part-way through a long run.
         """
         crop = values.get("crop")
+        roiSubset = crop.roi_subset
         time_range = values.get("time_range")
         if crop is None or crop.roi_by_time is None or time_range is None:
             return values
+        for id in roiSubset:
+            roi = crop.roi_by_time[id]
+            covered = range(min(roi), max(roi) + 1)
+            start = max(time_range.start, covered.start)
+            stop = min(time_range.stop, covered.stop)
+            if start >= stop:
+                raise ValueError(
+                    f"The time range {time_range.start}-{time_range.stop - 1} does not overlap "
+                    f"the track, which covers timepoints {covered.start}-{covered.stop - 1}"
+                )
 
-        covered = range(min(crop.roi_by_time), max(crop.roi_by_time) + 1)
-        start = max(time_range.start, covered.start)
-        stop = min(time_range.stop, covered.stop)
-        if start >= stop:
-            raise ValueError(
-                f"The time range {time_range.start}-{time_range.stop - 1} does not overlap "
-                f"the track, which covers timepoints {covered.start}-{covered.stop - 1}"
-            )
+            missing = [time for time in range(start, stop) if time not in roi]
+            if missing:
+                raise ValueError(
+                    f"The track has no position at timepoints {missing}, so there is nothing to "
+                    "centre the crop on there. Close the gaps in the track, or ask for a time "
+                    "range that avoids them."
+                )
 
-        missing = [time for time in range(start, stop) if time not in crop.roi_by_time]
-        if missing:
-            raise ValueError(
-                f"The track has no position at timepoints {missing}, so there is nothing to "
-                "centre the crop on there. Close the gaps in the track, or ask for a time "
-                "range that avoids them."
-            )
-
-        values["time_range"] = range(start, stop)
+            values["time_range"] = range(start, stop)
         return values
 
     @validator("deconvolution")
