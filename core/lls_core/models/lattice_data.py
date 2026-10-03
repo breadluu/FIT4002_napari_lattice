@@ -239,6 +239,7 @@ class LatticeData(OutputParams, DeskewParams):
         with ignore_keyerror():
             # dy for both axes, matching the plugin's own shape-to-ROI conversion.
             factor = 1 / values["physical_pixel_sizes"].Y
+            v.trackmate_window_size = v.trackmate_window_size*factor
             v.roi_list = scale_rois(v.roi_list, factor)
             if v.roi_by_time is not None:
                 for id,roi  in v.roi_by_time.items():
