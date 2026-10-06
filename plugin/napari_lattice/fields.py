@@ -989,7 +989,6 @@ class TrackmateFields(NapariFieldGroup):
         The cropping parameters for a run that follows the selected track, or None
         when this tab is only being used to look at the tracks.
         """
-
         if not self.fields_enabled.value:
             return None
         track = self._get_selected_track_data()
@@ -1000,6 +999,5 @@ class TrackmateFields(NapariFieldGroup):
         return CropParams(
             trackmate_file=self.tracks_path.value,
             roi_units=RoiUnits.Microns,
-            trackmate_track=self.track_id.value,
             trackmate_window_size=self.window_size.value
         )

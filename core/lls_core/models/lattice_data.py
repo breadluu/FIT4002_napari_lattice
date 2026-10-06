@@ -414,6 +414,7 @@ class LatticeData(OutputParams, DeskewParams):
         crop = values.get("crop")
         roiSubset = crop.roi_subset
         time_range = values.get("time_range")
+        values["time_range_by_track"] = {}
         if crop is None or crop.roi_by_time is None or time_range is None:
             return values
         for id in roiSubset:
@@ -435,7 +436,7 @@ class LatticeData(OutputParams, DeskewParams):
                     "range that avoids them."
                 )
 
-            values["time_range"] = range(start, stop)
+            values["time_range_by_track"][id] = range(start, stop)
         return values
 
     @validator("deconvolution")
@@ -491,9 +492,12 @@ class LatticeData(OutputParams, DeskewParams):
         """
         from lls_core.models.results import ProcessedSlice
         from tqdm import tqdm
-
         for roi_index in self.iter_roi_indices():
-            for time_idx, time in tqdm(enumerate(self.time_range), desc="Timepoints", total=len(self.time_range), disable=not self.progress_bar, leave=not self.cropping_enabled, position=1 if self.cropping_enabled else 0):
+            if self.time_range_by_track:
+                t_range = self.time_range_by_track[roi_index]
+            else:
+                t_range = self.time_range
+            for time_idx, time in tqdm(enumerate(t_range), desc="Timepoints", total=len(t_range), disable=not self.progress_bar, leave=not self.cropping_enabled, position=1 if self.cropping_enabled else 0):
                 for ch_idx, ch in tqdm(enumerate(self.channel_range), desc="Channels", total=len(self.channel_range), leave=False, disable=not self.progress_bar, position=2 if self.cropping_enabled else 1):
                     yield ProcessedSlice(
                         data=self.slice_data(time=time, channel=ch),
@@ -505,11 +509,15 @@ class LatticeData(OutputParams, DeskewParams):
                     ) 
 
     @property
-    def n_slices(self) -> int:
+    def n_slices(self,roi_index) -> int:
         """
         Returns the number of slices that will be returned by the `iter_*` methods.
         """
-        return len(self.time_range) * len(self.channel_range)
+        if self.time_range_by_track:
+            t_range = self.time_range_by_track[roi_index]
+        else:
+            t_range = self.time_range
+        return len(t_range) * len(self.channel_range)
 
     def iter_sublattices(self, update_with: dict = {}) -> Iterable[ProcessedSlice[LatticeData]]:
         """
