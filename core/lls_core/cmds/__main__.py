@@ -116,6 +116,42 @@ def parse_roi_subset(value: Optional[List[str]]) -> Optional[List[int]]:
                 raise BadParameter(f"ROI subset indices must be integers; got {piece!r}")
     return result
 
+def parse_window_size(value: Optional[list[Optional[str]]]) -> Optional[Tuple[Optional[float],Optional[dict[str,float]]]]:
+    """
+    Typer callback  normalises ``--trackmate-window-size`` into a tuple in form (default window size, dict[track_id,window size]). Accepts repeated flags (``--trackmate-window-size 45 --trackmate-window-size 5:30``) and/or a
+    comma-separated list (``--trackmate-window-size 45,1:30,2:40`), with surrounding whitespace
+    tolerated. A non-integer piece fails fast as a CLI usage error.
+    """
+    if not value:
+        return (None,None)
+    result_dict: dict[str,float] = {}
+    result_default: float = None
+    for item in value:
+        for piece in str(item).split(","):
+            piece = piece.strip()
+            if not piece:
+                continue
+            piece = piece.split(":") 
+            if len(piece) > 2:
+                raise BadParameter(f"recieved {len(piece)} inputs for a tracks window size, expected at most 2")
+            elif len(piece) == 2:
+                try:
+                    track = str(int(piece[0]))
+                except ValueError:
+                    raise BadParameter(f"Track indices must be integers; got {piece[0]!r}")
+                try:
+                    size = float(piece[1])
+                except ValueError:
+                    raise BadParameter(f"Track indices must be floats; got {piece[1]!r}")
+                result_dict[track] = size
+            elif len(piece) == 1:
+                if result_default:
+                    raise BadParameter("only a single default track window size can be used")
+                result_default = float(piece[0])
+            else:
+                raise BadParameter("invalid track window size input")
+    return (result_default,result_dict)
+
 
 def handle_merge(values: list):
     if len(values) > 1:
@@ -201,7 +237,7 @@ def process(
     roi_subset: List[str] = field_from_model(CropParams, "roi_subset", extra_description="Accepts either repeated flags (--roi-subset 2 --roi-subset 5) or a comma-separated list (--roi-subset 2,5,7).", default=[], callback=parse_roi_subset),
     z_range: Optional[Tuple[int,int]] = field_from_model(CropParams, "z_range", show_default=False),
     
-    track_crop_size: float = field_from_model(CropParams,"trackmate_window_size",default=30.0),
+    track_crop_size: Optional[List[str]]  = field_from_model(CropParams,"trackmate_window_size",default=None,callback=parse_window_size),
     
     enable_deconvolution: bool = Option(False, "--deconvolution/--disable-deconvolution", rich_help_panel="Deconvolution"),
     decon_processing: DeconvolutionChoice = field_from_model(DeconvolutionParams, "decon_processing", rich_help_panel="Deconvolution"),
