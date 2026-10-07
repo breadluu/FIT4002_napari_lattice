@@ -44,8 +44,13 @@ TrackMate files must follow the appropriate format to be accepted as a TrackMate
 Files that do not match these will not be correctly processed.
 
 
-the crop will create a N by N box defined by `--track-crop-size` given in microns, defaulting to 30, centering on the tracking datum at each time point. if a crop would otherwise overrun the deskewed images bounds it will be shifted such that it remains entirely within the image bounds.
+`--track-crop-size` is used to define the size of the the N×N crop window. the default is 30 microns, to redefine this default for processing a single value is provided. additionally crop windows can be specified for specific tracks in the form `track_id:window_size`.
 
+for example:
+```
+--track-crop-size 40,1:35,3:60
+```
+would mean that track 1 has a 35×35 crop window, track 3 a 60×60 window and all other tracks a 40×40 window.
 ## Coverslip-frame deskew (`--no-coverslip-rotation`)
 
 By default, `lls-pipeline` performs the standard deskew (`cle.deskew_y` /

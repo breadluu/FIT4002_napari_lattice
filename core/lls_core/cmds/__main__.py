@@ -237,7 +237,7 @@ def process(
     roi_subset: List[str] = field_from_model(CropParams, "roi_subset", extra_description="Accepts either repeated flags (--roi-subset 2 --roi-subset 5) or a comma-separated list (--roi-subset 2,5,7).", default=[], callback=parse_roi_subset),
     z_range: Optional[Tuple[int,int]] = field_from_model(CropParams, "z_range", show_default=False),
     
-    track_crop_size: Optional[List[str]]  = field_from_model(CropParams,"trackmate_window_size",default=None,callback=parse_window_size),
+    track_crop_size: Optional[List[str]]  = field_from_model(CropParams,"trackmate_window_size",extra_description="Accepts either repeated flags (--trackmate-window-size 40 --trackmate-window-size 5:35) or a comma-separated list (--trackmate-window-size 30,5:35,7:40). accepts one default value give as a single float in microns (if no default provided any track without a specific size provided will be 30 microns). further sizes for individual tracks can be specified with the form track_number:window_size.",default=None,callback=parse_window_size),
     
     enable_deconvolution: bool = Option(False, "--deconvolution/--disable-deconvolution", rich_help_panel="Deconvolution"),
     decon_processing: DeconvolutionChoice = field_from_model(DeconvolutionParams, "decon_processing", rich_help_panel="Deconvolution"),
