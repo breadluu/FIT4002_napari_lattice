@@ -11,7 +11,7 @@ from pathlib import Path
 
 from magicgui import magic_factory
 
-from core.lls_core.trackmate_io import trackmate_file_to_napari_tracks
+from lls_core.trackmate_io import trackmate_file_to_napari_tracks
 
 try:
     # Only needed for the type hint below; napari is a runtime dependency
