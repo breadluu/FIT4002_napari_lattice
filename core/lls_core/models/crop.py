@@ -124,7 +124,7 @@ class CropParams(FieldAccessModel):
         from lls_core.trackmate_io import is_trackmate_file
         #if no path has been given not using trackmate
         if not values.get("trackmate_file"):
-            if is_pathlike(values.get("roi_list")[0]) and is_trackmate_file(values.get("roi_list")[0]):
+            if values.get("roi_list") and is_pathlike(values.get("roi_list")[0]) and is_trackmate_file(values.get("roi_list")[0]):
                 path = Path(values.get("roi_list")[0])
                 if not path.exists(): 
                     raise FileNotFoundError(f"TrackMate File not found: {path}")
