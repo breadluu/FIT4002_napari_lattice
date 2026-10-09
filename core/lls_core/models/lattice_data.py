@@ -415,31 +415,32 @@ class LatticeData(OutputParams, DeskewParams):
         here rather than part-way through a long run.
         """
         crop = values.get("crop")
-        roiSubset = crop.roi_subset
-        time_range = values.get("time_range")
-        values["time_range_by_track"] = {}
-        if crop is None or crop.roi_by_time is None or time_range is None:
-            return values
-        for id in roiSubset:
-            roi = crop.roi_by_time[id]
-            covered = range(min(roi), max(roi) + 1)
-            start = max(time_range.start, covered.start)
-            stop = min(time_range.stop, covered.stop)
-            if start >= stop:
-                raise ValueError(
-                    f"The time range {time_range.start}-{time_range.stop - 1} does not overlap "
-                    f"the track, which covers timepoints {covered.start}-{covered.stop - 1}"
-                )
+        if crop:
+            roiSubset = crop.roi_subset
+            time_range = values.get("time_range")
+            values["time_range_by_track"] = {}
+            if crop is None or crop.roi_by_time is None or time_range is None:
+                return values
+            for id in roiSubset:
+                roi = crop.roi_by_time[id]
+                covered = range(min(roi), max(roi) + 1)
+                start = max(time_range.start, covered.start)
+                stop = min(time_range.stop, covered.stop)
+                if start >= stop:
+                    raise ValueError(
+                        f"The time range {time_range.start}-{time_range.stop - 1} does not overlap "
+                        f"the track, which covers timepoints {covered.start}-{covered.stop - 1}"
+                    )
 
-            missing = [time for time in range(start, stop) if time not in roi]
-            if missing:
-                raise ValueError(
-                    f"The track has no position at timepoints {missing}, so there is nothing to "
-                    "centre the crop on there. Close the gaps in the track, or ask for a time "
-                    "range that avoids them."
-                )
+                missing = [time for time in range(start, stop) if time not in roi]
+                if missing:
+                    raise ValueError(
+                        f"The track has no position at timepoints {missing}, so there is nothing to "
+                        "centre the crop on there. Close the gaps in the track, or ask for a time "
+                        "range that avoids them."
+                    )
 
-            values["time_range_by_track"][id] = range(start, stop)
+                values["time_range_by_track"][id] = range(start, stop)
         return values
 
     @validator("deconvolution")
