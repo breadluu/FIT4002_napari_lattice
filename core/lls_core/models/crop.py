@@ -39,7 +39,7 @@ class CropParams(FieldAccessModel):
         description="The units the `roi_list` coordinates are in. 'Auto' takes it from the file type: ImageJ ROIs are pixels, and a napari shapes CSV saved from the plugin's crop layer is microns, because that layer is unscaled while the image layer carries the pixel size. Set it explicitly for a CSV written by anything else.",
         cli_description="Units of the ROI coordinates. 'Auto' (default) reads .roi/.zip as Pixels and .csv as Microns.",
     )
-    roi_subset: List[Union[int, str]] = Field(
+    roi_subset: List[int] = Field(
         description="A subset of all the ROIs/Tracks to process. Each list item should be an index into the ROI list or Tracks in a Trackmate file indicating an ROI/Track to include. This allows you to process only a subset of the regions from a ROI/Tracking file specified using the `roi_list` parameter. If `None`, it is assumed that you want to process all ROIs/Tracks.",
         default=None
     )
@@ -235,6 +235,7 @@ class CropParams(FieldAccessModel):
         # Accept comma-separated string ("2,5,7"), or a list with comma-separated
         # strings (CLI). Convert everything to int type indices
         # Bad input raises Value Error
+        print(v)
         if v is None:
             return v
         if isinstance(v, str):
@@ -250,8 +251,9 @@ class CropParams(FieldAccessModel):
                 result.append(int(item))
         return result
     
-    @root_validator(pre=True)
-    def default_roi_range(cls, values: dict):
+
+    @validator("roi_subset", pre=True, always=True)
+    def default_roi_range(cls, v: Any, values: dict):
         # If the roi/track range isn't provided, assume all rois/tracks should be processed
         from lls_core.trackmate_io import load_trackmate_tracks
         path = Path(values.get("trackmate_file")) if values.get("trackmate_file") else None
@@ -260,9 +262,9 @@ class CropParams(FieldAccessModel):
         #if no path has been given not using trackmate
         if path is None:
             if subset is None and "roi_list" in values:
-                values["roi_subset"] = list(range(len(values["roi_list"])))
+                return list(range(len(values["roi_list"])))
         elif not path.exists(): 
             raise FileNotFoundError(f"TrackMate File not found: {path}")
         elif subset is None and "trackmate_file" in values:
-            values["roi_subset"] = list(load_trackmate_tracks(path).keys())
-        return values
+            return list(load_trackmate_tracks(path).keys())
+        return v
