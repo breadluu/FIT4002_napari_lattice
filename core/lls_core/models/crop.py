@@ -235,7 +235,7 @@ class CropParams(FieldAccessModel):
         # Accept comma-separated string ("2,5,7"), or a list with comma-separated
         # strings (CLI). Convert everything to int type indices
         # Bad input raises Value Error
-        print(v)
+        
         if v is None:
             return v
         if isinstance(v, str):
@@ -257,14 +257,14 @@ class CropParams(FieldAccessModel):
         # If the roi/track range isn't provided, assume all rois/tracks should be processed
         from lls_core.trackmate_io import load_trackmate_tracks
         path = Path(values.get("trackmate_file")) if values.get("trackmate_file") else None
-
-        subset = values.get("roi_subset")
+        if v is not None:
+            return v
         #if no path has been given not using trackmate
         if path is None:
-            if subset is None and "roi_list" in values:
+            if "roi_list" in values:
                 return list(range(len(values["roi_list"])))
         elif not path.exists(): 
             raise FileNotFoundError(f"TrackMate File not found: {path}")
-        elif subset is None and "trackmate_file" in values:
+        elif "trackmate_file" in values:
             return list(load_trackmate_tracks(path).keys())
         return v
