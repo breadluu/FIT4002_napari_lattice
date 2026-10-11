@@ -26,6 +26,11 @@ from lls_core.models.crop import CropParams
 from lls_core.models.lattice_data import LatticeData
 
 
+# A TrackMate-driven crop carries a zero ROI in `roi_list` as a placeholder;
+# the real per-timepoint windows live in `roi_by_time`, keyed by track then time.
+_PLACEHOLDER_ROI = Roi((0, 0), (0, 0), (0, 0), (0, 0))
+
+
 def _track(*rows):
     """Build an (n, 4) [t, x, y, z] microns array from row tuples."""
     return np.asarray(rows, dtype=float)
@@ -58,7 +63,7 @@ def _lattice(tmp_path, *, roi_by_time, time_points=5, z=20, y=80, x=80, dy=0.5, 
         save_name="t",
         save_dir=str(tmp_path),
         save_type="tiff",
-        crop=CropParams(roi_by_time=roi_by_time, z_range=(0, 5)),
+        crop=CropParams(roi_by_time={0: roi_by_time}, roi_list=[_PLACEHOLDER_ROI], roi_subset=[0], z_range=(0, 5)),
         **kwargs,
     )
 
@@ -182,30 +187,14 @@ def test_clamp_is_idempotent_and_does_not_mutate_input():
     assert clamp_rois_to_image(once, 100.0, 100.0) == once
 
 
-def test_crop_params_seeds_roi_list_from_the_earliest_track_roi():
-    by_time = track_to_rois(_track([3, 10.0, 10.0, 0.0], [5, 20.0, 20.0, 0.0]), 10.0)
-    crop = CropParams(roi_by_time=by_time)
-
-    assert crop.roi_list == [by_time[3]]
-    assert crop.roi_subset == [0]
-
-
-def test_crop_params_does_not_overwrite_an_explicit_roi_list():
-    by_time = track_to_rois(_track([0, 10.0, 10.0, 0.0]), 10.0)
-    explicit = Roi((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
-    crop = CropParams(roi_by_time=by_time, roi_list=[explicit], roi_units=RoiUnits.Pixels)
-
-    assert crop.roi_list == [explicit]
-
-
 def test_crop_params_auto_units_are_microns_when_only_a_track_is_given():
     by_time = track_to_rois(_track([0, 1.0, 1.0, 0.0]), 2.0)
-    assert CropParams(roi_by_time=by_time).roi_units == RoiUnits.Microns
+    assert CropParams(roi_by_time={0: by_time}, roi_list=[_PLACEHOLDER_ROI], roi_subset=[0]).roi_units == RoiUnits.Microns
 
 
 def test_crop_params_explicit_units_override_the_track_default():
     by_time = track_to_rois(_track([0, 1.0, 1.0, 0.0]), 2.0)
-    crop = CropParams(roi_by_time=by_time, roi_units=RoiUnits.Pixels)
+    crop = CropParams(roi_by_time={0: by_time}, roi_list=[_PLACEHOLDER_ROI], roi_subset=[0], roi_units=RoiUnits.Pixels)
     assert crop.roi_units == RoiUnits.Pixels
 
 
@@ -214,18 +203,13 @@ def test_crop_params_auto_units_are_pixels_for_plain_coordinates():
     assert CropParams(roi_list=[roi]).roi_units == RoiUnits.Pixels
 
 
-def test_crop_params_rejects_an_empty_track_with_no_roi_list():
-    with pytest.raises(ValidationError, match="At least one region of interest"):
-        CropParams(roi_by_time={})
-
-
 def test_crop_params_json_round_trip_keeps_int_timepoints():
     # JSON object keys are strings; they must come back as int timepoints.
     by_time = track_to_rois(_track([2, 10.0, 10.0, 0.0], [3, 11.0, 11.0, 0.0]), 10.0)
-    crop = CropParams(roi_by_time=by_time, roi_units=RoiUnits.Microns)
+    crop = CropParams(roi_by_time={0: by_time}, roi_list=[_PLACEHOLDER_ROI], roi_subset=[0], roi_units=RoiUnits.Microns)
     again = CropParams.parse_raw(crop.json())
 
-    assert set(again.roi_by_time) == {2, 3}
+    assert set(again.roi_by_time[0]) == {2, 3}
     assert again.roi_for_time(3, 0) == crop.roi_for_time(3, 0)
 
 
@@ -234,7 +218,7 @@ def test_roi_for_time_returns_the_moving_window_when_tracking():
         _track([0, 10.0, 10.0, 0.0], [1, 20.0, 20.0, 0.0]),
         window_size=10.0,
     )
-    crop = CropParams(roi_by_time=by_time)
+    crop = CropParams(roi_by_time={0: by_time}, roi_list=[_PLACEHOLDER_ROI], roi_subset=[0])
 
     assert crop.roi_for_time(0, 0) == by_time[0]
     assert crop.roi_for_time(1, 0) == by_time[1]
@@ -253,7 +237,7 @@ def test_roi_for_time_falls_back_to_the_static_roi_list():
 
 def test_roi_for_time_rejects_a_timepoint_the_track_does_not_cover():
     by_time = track_to_rois(_track([0, 1.0, 1.0, 0.0], [2, 2.0, 2.0, 0.0]), 2.0)
-    crop = CropParams(roi_by_time=by_time)
+    crop = CropParams(roi_by_time={0: by_time}, roi_list=[_PLACEHOLDER_ROI], roi_subset=[0])
 
     with pytest.raises(ValueError, match="no position at timepoint 1.*covers timepoints 0-2"):
         crop.roi_for_time(1, 0)
@@ -266,8 +250,7 @@ def test_lattice_converts_track_rois_from_microns_to_pixels(tmp_path):
 
     assert lattice.crop.roi_units == RoiUnits.Pixels
     expected = scale_rois([by_time[0]], 2.0)[0]
-    assert lattice.crop.roi_by_time[0] == expected
-    assert lattice.crop.roi_list == [expected]
+    assert lattice.crop.roi_by_time[0][0] == expected
 
 
 def test_lattice_conversion_does_not_repeat_on_revalidation(tmp_path):
@@ -283,7 +266,7 @@ def test_lattice_clamps_a_track_roi_that_starts_off_the_image(tmp_path):
     by_time = track_to_rois(_track([0, 1.0, 1.0, 0.0]), window_size=20.0)
     lattice = _lattice(tmp_path, roi_by_time=by_time, dy=1.0, y=50, x=50)
 
-    top, bottom, left, right = _roi_bounds(lattice.crop.roi_by_time[0])
+    top, bottom, left, right = _roi_bounds(lattice.crop.roi_by_time[0][0])
     assert top >= 0.0
     assert left >= 0.0
     assert bottom - top == pytest.approx(20.0)
@@ -298,21 +281,13 @@ def test_lattice_clamps_every_timepoint_into_the_deskewed_frame(tmp_path):
     lattice = _lattice(tmp_path, roi_by_time=by_time, dy=1.0, y=50, x=50)
     height, width = lattice.derived.deskew_vol_shape[1:]
 
-    for roi in lattice.crop.roi_by_time.values():
+    for roi in lattice.crop.roi_by_time[0].values():
         top, bottom, left, right = _roi_bounds(roi)
         assert 0.0 <= top and bottom <= height
         assert 0.0 <= left and right <= width
         assert _roi_size(roi) == pytest.approx((20.0, 20.0))
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Seeded roi_list is scaled but never clamped, so warn_rois_outside_image "
-        "still fires after keep_track_rois_in_frame fixes roi_by_time."
-    ),
-    strict=True,
-    raises=AssertionError,
-)
 def test_lattice_does_not_warn_after_a_track_roi_is_clamped(tmp_path, caplog):
     # Find the real deskewed frame size first, then start the track on its
     # bottom-right edge (the warning only checks the max edge).
@@ -346,7 +321,8 @@ def test_lattice_narrows_time_range_to_the_track_coverage(tmp_path):
     )
     lattice = _lattice(tmp_path, roi_by_time=by_time, time_points=5)
 
-    assert list(lattice.time_range) == [1, 2]
+    # The run-wide range is untouched; each track gets its own covered range.
+    assert list(lattice.time_range_by_track[0]) == [1, 2]
 
 
 def test_lattice_keeps_a_user_time_range_that_is_already_inside_the_track(tmp_path):
