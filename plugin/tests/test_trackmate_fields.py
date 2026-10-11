@@ -3,6 +3,7 @@ Headless tests for the ROI Tracking tab (TrackmateFields): loading a track
 file, the track ID dropdown, drawing the tracks layer and selecting one track.
 Methods are called on stand-ins for `self`, so no napari viewer is needed.
 """
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -43,6 +44,8 @@ def fake_fields(tracks=None, selected="All", layer_name="", path=None):
         layer_name=SimpleNamespace(value=layer_name),
         tracks_path=SimpleNamespace(value=path),
         _render_tracks_layer=Mock(),
+        # magicclass wraps button methods: it blocks the macro while they run, then records if active
+        macro=SimpleNamespace(blocked=nullcontext, active=False),
     )
     if tracks is not None:
         fake._tracks = tracks
