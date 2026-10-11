@@ -41,10 +41,30 @@ def test_make_crop_model_refuses_both():
 TRACK = np.array([[0, 10, 20, 0], [1, 11, 21, 0]], dtype=float)
 
 
-def fake_trackmate(enabled=True, track=TRACK, window=4.0):
+CSV = (
+    "LABEL,ID,TRACK_ID,QUALITY,POSITION_X,POSITION_Y,POSITION_Z,POSITION_T,FRAME,RADIUS\n"
+    "Label,Spot ID,Track ID,Quality,X,Y,Z,T,Frame,Radius\n"
+    "Label,Spot ID,Track ID,Quality,X,Y,Z,T,Frame,R\n"
+    ",,,(quality),(micron),(micron),(micron),(sec),,(micron)\n"
+    "ID0,0,0,1.0,10.0,20.0,0.0,0.0,0,7.5\n"
+    "ID1,1,0,1.0,11.0,21.0,0.0,1.0,1,7.5\n"
+    "ID2,2,1,1.0,50.0,60.0,0.0,0.0,0,7.5\n"
+)
+
+
+@pytest.fixture
+def tracks_file(tmp_path):
+    path = tmp_path / "spots.csv"
+    path.write_text(CSV)
+    return path
+
+
+def fake_trackmate(path=None, enabled=True, track=TRACK, window=4.0, selected="0"):
     return SimpleNamespace(
         fields_enabled=SimpleNamespace(value=enabled),
         window_size=SimpleNamespace(value=window),
+        tracks_path=SimpleNamespace(value=path),
+        track_id=SimpleNamespace(value=selected),
         _get_selected_track_data=lambda: track,
     )
 
@@ -63,11 +83,14 @@ def test_all_tracks_selected_is_rejected():
         TrackmateFields._make_model(fake_trackmate(track=None))
 
 
-def test_builds_micron_crop_from_selected_track():
-    crop = TrackmateFields._make_model(fake_trackmate(window=4.0))
+def test_builds_micron_crop_from_selected_track(tracks_file):
+    crop = TrackmateFields._make_model(fake_trackmate(tracks_file, window=4.0))
     assert isinstance(crop, CropParams)
     assert crop.roi_units == RoiUnits.Microns
-    assert set(crop.roi_by_time) == {0, 1}
-    ys = [y for y, _ in crop.roi_by_time[0]]
-    xs = [x for _, x in crop.roi_by_time[0]]
+    # Only the selected track is cropped along, not every track in the file.
+    assert crop.roi_subset == [0]
+    assert set(crop.roi_by_time) == {0}
+    assert set(crop.roi_by_time[0]) == {0, 1}
+    ys = [y for y, _ in crop.roi_by_time[0][0]]
+    xs = [x for _, x in crop.roi_by_time[0][0]]
     assert (min(ys), max(ys), min(xs), max(xs)) == (18, 22, 8, 12)
