@@ -1,10 +1,10 @@
 """
 Headless tests for the ROI Tracking tab (TrackmateFields): loading a track
-file, the track ID dropdown, drawing the tracks layer and selecting one track.
-Methods are called on stand-ins for `self`, so no napari viewer is needed.
+file, the track dropdown, drawing the tracks layer, the crop window preview and
+the model. Methods are called on stand-ins for `self`, so no napari viewer is needed.
 """
 from contextlib import nullcontext
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
@@ -34,45 +34,65 @@ class FakeViewer:
         self.added = []
 
     def add_tracks(self, data, properties=None, name=None, tail_width=None):
-        self.added.append(dict(data=data, properties=properties, name=name, tail_width=tail_width))
+        self.added.append(dict(kind="tracks", data=data, properties=properties, name=name, tail_width=tail_width))
+        self.layers[name] = data
+
+    def add_shapes(self, data, shape_type=None, name=None, **kwargs):
+        self.added.append(dict(kind="shapes", data=data, shape_type=shape_type, name=name))
         self.layers[name] = data
 
 
-def fake_fields(tracks=None, selected="All", layer_name="", path=None):
+def fake_fields(tracks=None, selected=(), layer_name="", path=None, window=30.0,
+                overrides="", preview=True):
     fake = SimpleNamespace(
-        track_id=SimpleNamespace(value=selected, reset_choices=Mock()),
+        track_ids=SimpleNamespace(value=list(selected), reset_choices=Mock()),
         layer_name=SimpleNamespace(value=layer_name),
         tracks_path=SimpleNamespace(value=path),
+        window_size=SimpleNamespace(value=window),
+        window_overrides=SimpleNamespace(value=overrides),
+        show_preview=SimpleNamespace(value=preview),
+        errors=SimpleNamespace(value=""),
+        fields_enabled=SimpleNamespace(value=True),
         _render_tracks_layer=Mock(),
+        _render_preview_layer=Mock(),
+        _set_revealed=Mock(),
+        _follow_viewer_time=Mock(),
         # magicclass wraps button methods: it blocks the macro while they run, then records if active
         macro=SimpleNamespace(blocked=nullcontext, active=False),
     )
+    # The small helpers are real, so the methods under test see their true behaviour.
+    for name in ("_get_selected_track_ids", "_get_window_overrides", "_tracks_layer_name"):
+        setattr(fake, name, MethodType(getattr(TrackmateFields, name), fake))
     if tracks is not None:
         fake._tracks = tracks
     return fake
 
 
-def test_track_options_before_loading_are_just_all():
-    assert TrackmateFields._get_track_id_options(fake_fields(), None) == ["All"]
+def test_track_options_before_loading_are_empty():
+    assert TrackmateFields._get_track_id_options(fake_fields(), None) == []
 
 
-def test_track_options_are_all_then_ids_in_numeric_order():
+def test_track_options_are_ids_in_numeric_order():
     options = TrackmateFields._get_track_id_options(fake_fields(TRACKS), None)
-    assert options == ["All", "0", "2", "10"]
+    assert options == ["0", "2", "10"]
 
 
-@pytest.mark.parametrize("selected", ["All", None, ""])
-def test_no_single_track_selected_gives_none(selected):
-    assert TrackmateFields._get_selected_track_data(fake_fields(TRACKS, selected)) is None
+def test_nothing_selected_gives_no_tracks():
+    assert fake_fields(TRACKS)._get_selected_track_ids() == []
 
 
-def test_no_file_loaded_gives_none():
-    assert TrackmateFields._get_selected_track_data(fake_fields(selected="2")) is None
+def test_no_file_loaded_gives_no_tracks():
+    assert fake_fields(selected=["2"])._get_selected_track_ids() == []
 
 
-def test_selected_track_returns_its_track_data():
-    data = TrackmateFields._get_selected_track_data(fake_fields(TRACKS, "2"))
-    np.testing.assert_array_equal(data, TRACKS["2"]["trackData"])
+def test_selected_tracks_come_back_in_numeric_order():
+    fake = fake_fields(TRACKS, selected=["10", "0", "2"])
+    assert fake._get_selected_track_ids() == ["0", "2", "10"]
+
+
+def test_selected_tracks_not_in_the_file_are_dropped():
+    fake = fake_fields(TRACKS, selected=["2", "99"])
+    assert fake._get_selected_track_ids() == ["2"]
 
 
 def test_load_without_a_file_selected():
@@ -85,29 +105,38 @@ def test_load_with_a_missing_file(tmp_path):
         TrackmateFields.load_tracks(fake_fields(path=tmp_path / "nope.csv"))
 
 
-def test_load_stores_tracks_resets_dropdown_and_draws(tmp_path):
+def test_load_stores_tracks_resets_dropdown_reveals_tab_and_draws(tmp_path):
     path = tmp_path / "spots.csv"
     path.write_text(CSV)
-    fake = fake_fields(selected="3", path=path)
+    fake = fake_fields(selected=["3"], path=path)
 
     TrackmateFields.load_tracks(fake)
 
     assert set(fake._tracks) == {"0", "5"}
-    assert fake.track_id.value == "All"
-    fake.track_id.reset_choices.assert_called_once()
+    assert fake.track_ids.value == []
+    fake.track_ids.reset_choices.assert_called_once()
+    fake._set_revealed.assert_called_once_with(True)
     fake._render_tracks_layer.assert_called_once()
+    fake._render_preview_layer.assert_called_once()
+    fake._follow_viewer_time.assert_called_once()
 
 
-def test_changing_track_redraws_when_tracks_are_loaded():
-    fake = fake_fields(TRACKS)
-    TrackmateFields._on_track_id_changed(fake)
-    fake._render_tracks_layer.assert_called_once()
+def test_a_failed_load_leaves_the_tab_hidden(tmp_path):
+    fake = fake_fields(path=tmp_path / "nope.csv")
+    with pytest.raises(FileNotFoundError):
+        TrackmateFields.load_tracks(fake)
+    fake._set_revealed.assert_not_called()
 
 
-def test_changing_track_does_nothing_before_loading():
-    fake = fake_fields()
-    TrackmateFields._on_track_id_changed(fake)
-    fake._render_tracks_layer.assert_not_called()
+def test_per_track_sizes_are_limited_to_the_selected_tracks():
+    fake = fake_fields(TRACKS, overrides="0:20, 10:5")
+    assert fake._get_window_overrides(["0"]) == {"0": 20.0}
+    assert fake._get_window_overrides() == {"0": 20.0, "10": 5.0}
+
+
+def test_per_track_sizes_reject_nonsense():
+    with pytest.raises(ValueError):
+        fake_fields(TRACKS, overrides="zero:20")._get_window_overrides()
 
 
 @pytest.fixture
@@ -117,16 +146,16 @@ def viewer(monkeypatch):
     return v
 
 
-def test_render_all_draws_every_track(viewer, tmp_path):
-    TrackmateFields._render_tracks_layer(fake_fields(TRACKS, "All", path=tmp_path / "t.xml"))
-    ids = set(viewer.added[0]["data"][:, 0])
-    assert ids == {0, 2, 10}
+def test_render_with_nothing_selected_draws_every_track(viewer, tmp_path):
+    fake = fake_fields(TRACKS, path=tmp_path / "t.xml")
+    TrackmateFields._render_tracks_layer(fake)
+    assert set(viewer.added[0]["data"][:, 0]) == {0, 2, 10}
 
 
-def test_render_single_track_draws_only_that_track(viewer, tmp_path):
-    TrackmateFields._render_tracks_layer(fake_fields(TRACKS, "2", path=tmp_path / "t.xml"))
-    ids = set(viewer.added[0]["data"][:, 0])
-    assert ids == {2}
+def test_render_draws_only_the_selected_tracks(viewer, tmp_path):
+    fake = fake_fields(TRACKS, selected=["0", "10"], path=tmp_path / "t.xml")
+    TrackmateFields._render_tracks_layer(fake)
+    assert set(viewer.added[0]["data"][:, 0]) == {0, 10}
 
 
 def test_render_layer_name_defaults_to_file_stem(viewer, tmp_path):
@@ -150,3 +179,111 @@ def test_render_replaces_an_existing_layer_with_the_same_name(monkeypatch, tmp_p
     assert list(viewer.layers) == ["t"]
     assert isinstance(viewer.layers["t"], np.ndarray)  # the new tracks, not "old layer"
     assert len(viewer.added) == 1
+
+
+def _bounds(rect):
+    rect = np.asarray(rect)
+    return rect[:, 0].min(), rect[:, 0].max(), rect[:, 1].min(), rect[:, 1].max()
+
+
+def _preview_fake(tmp_path, **kwargs):
+    fake = fake_fields(TRACKS, path=tmp_path / "t.xml", **kwargs)
+    fake._current_time = lambda viewer: None
+    return fake
+
+
+def test_preview_draws_one_rectangle_per_selected_track(viewer, tmp_path):
+    fake = _preview_fake(tmp_path, selected=["0", "2"], window=10.0)
+    TrackmateFields._render_preview_layer(fake)
+
+    layer = viewer.added[0]
+    assert layer["kind"] == "shapes"
+    assert layer["shape_type"] == "rectangle"
+    assert layer["name"] == "t crop window"
+    assert [_bounds(r) for r in layer["data"]] == [
+        (15.0, 25.0, 5.0, 15.0),
+        (35.0, 45.0, 25.0, 35.0),
+    ]
+
+
+def test_preview_uses_each_tracks_own_size(viewer, tmp_path):
+    fake = _preview_fake(tmp_path, selected=["0", "2"], window=10.0, overrides="2:20")
+    TrackmateFields._render_preview_layer(fake)
+
+    sizes = [_bounds(r)[1] - _bounds(r)[0] for r in viewer.added[0]["data"]]
+    assert sizes == [10.0, 20.0]
+
+
+def test_preview_follows_the_current_timepoint(viewer, tmp_path):
+    fake = _preview_fake(tmp_path, selected=["0"], window=10.0)
+    fake._current_time = lambda viewer: 1
+    TrackmateFields._render_preview_layer(fake)
+
+    assert _bounds(viewer.added[0]["data"][0]) == (16.0, 26.0, 6.0, 16.0)
+
+
+def test_preview_replaces_the_previous_one(viewer, tmp_path):
+    fake = _preview_fake(tmp_path, selected=["0"])
+    TrackmateFields._render_preview_layer(fake)
+    TrackmateFields._render_preview_layer(fake)
+    assert list(viewer.layers) == ["t crop window"]
+
+
+def test_preview_is_removed_when_nothing_is_selected(viewer, tmp_path):
+    fake = _preview_fake(tmp_path, selected=["0"])
+    TrackmateFields._render_preview_layer(fake)
+    fake.track_ids.value = []
+    TrackmateFields._render_preview_layer(fake)
+    assert viewer.layers == {}
+
+
+def test_preview_is_removed_when_switched_off(viewer, tmp_path):
+    fake = _preview_fake(tmp_path, selected=["0"])
+    TrackmateFields._render_preview_layer(fake)
+    fake.show_preview.value = False
+    TrackmateFields._render_preview_layer(fake)
+    assert viewer.layers == {}
+
+
+def test_preview_reports_bad_sizes_instead_of_drawing(viewer, tmp_path):
+    fake = _preview_fake(tmp_path, selected=["0"], overrides="oops")
+    TrackmateFields._render_preview_layer(fake)
+    assert viewer.layers == {}
+    assert fake.errors.value
+
+
+def test_current_time_is_none_without_a_time_axis():
+    viewer = SimpleNamespace(dims=SimpleNamespace(ndim=3, current_step=(0, 0, 0)))
+    assert TrackmateFields._current_time(viewer) is None
+
+
+def test_current_time_reads_the_first_of_four_axes():
+    viewer = SimpleNamespace(dims=SimpleNamespace(ndim=4, current_step=(3, 7, 0, 0)))
+    assert TrackmateFields._current_time(viewer) == 3
+
+
+def test_changing_tracks_redraws_when_tracks_are_loaded():
+    fake = fake_fields(TRACKS)
+    TrackmateFields._on_track_ids_changed(fake)
+    fake._render_tracks_layer.assert_called_once()
+    fake._render_preview_layer.assert_called_once()
+
+
+def test_changing_tracks_does_nothing_before_loading():
+    fake = fake_fields()
+    TrackmateFields._on_track_ids_changed(fake)
+    fake._render_tracks_layer.assert_not_called()
+    fake._render_preview_layer.assert_not_called()
+
+
+def test_changing_the_window_redraws_only_the_preview():
+    fake = fake_fields(TRACKS)
+    TrackmateFields._on_window_changed(fake)
+    fake._render_preview_layer.assert_called_once()
+    fake._render_tracks_layer.assert_not_called()
+
+
+def test_changing_the_window_does_nothing_before_loading():
+    fake = fake_fields()
+    TrackmateFields._on_window_changed(fake)
+    fake._render_preview_layer.assert_not_called()
