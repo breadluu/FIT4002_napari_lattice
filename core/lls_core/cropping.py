@@ -141,6 +141,63 @@ def track_to_rois(track_data: NDArray, window_size: float) -> Dict[int, Roi]:
         rois[int(t)] = Roi((top, left), (top, right), (bottom, right), (bottom, left))
     return rois
 
+def parse_track_window_sizes(text: Optional[str]) -> Dict[str, float]:
+    """
+    Parses per-track crop window sizes written as `track:size` pairs separated by
+    commas or whitespace, e.g. `"3:20, 7:45.5"`, into `{"3": 20.0, "7": 45.5}`.
+    This is the same `track:size` form the CLI accepts. Blank input gives `{}`.
+    """
+    sizes: Dict[str, float] = {}
+    for piece in (text or "").replace(",", " ").split():
+        parts = piece.split(":")
+        if len(parts) != 2:
+            raise ValueError(f"Expected a 'track:size' pair, e.g. '3:20'; got {piece!r}")
+        try:
+            track = str(int(parts[0]))
+        except ValueError:
+            raise ValueError(f"Track IDs must be integers; got {parts[0]!r}") from None
+        try:
+            size = float(parts[1])
+        except ValueError:
+            raise ValueError(f"Window sizes must be numbers; got {parts[1]!r}") from None
+        if size <= 0:
+            raise ValueError(f"Window sizes must be positive; got {size} for track {track}")
+        sizes[track] = size
+    return sizes
+
+
+def track_window_previews(
+    tracks: Dict[str, dict],
+    track_ids: List[str],
+    default_size: float,
+    overrides: Optional[Dict[str, float]] = None,
+    time: Optional[int] = None,
+) -> Dict[str, Roi]:
+    """
+    The crop window of each requested track at `time`, in the track file's units
+    (microns), so the user can see how large a window is before running.
+
+    A track that does not cover `time` is shown at its nearest timepoint, so the
+    preview never vanishes while scrubbing past the ends of a track. With no
+    `time` the first timepoint is used.
+    """
+    overrides = overrides or {}
+    previews: Dict[str, Roi] = {}
+    for track_id in track_ids:
+        if track_id not in tracks:
+            continue
+        data = tracks[track_id]["trackData"]
+        if len(data) == 0:
+            continue
+        if time is None:
+            row = data[0]
+        else:
+            row = data[abs(data[:, 0] - time).argmin()]
+        size = overrides.get(track_id, default_size)
+        previews[track_id] = next(iter(track_to_rois(row[None, :], size).values()))
+    return previews
+
+
 def _slide_into(low: float, high: float, limit: float, size: float) -> Tuple[float, float]:
     """
     Slides the span [low, high] of length `size` back inside [0, limit] without
