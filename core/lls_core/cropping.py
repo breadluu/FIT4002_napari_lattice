@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict, NamedTuple, Tuple, List
+from typing import TYPE_CHECKING, Dict, NamedTuple, Optional, Tuple, List
 
 from strenum import StrEnum
 
@@ -141,73 +141,50 @@ def track_to_rois(track_data: NDArray, window_size: float) -> Dict[int, Roi]:
         rois[int(t)] = Roi((top, left), (top, right), (bottom, right), (bottom, left))
     return rois
 
-def clamp_roi_to_image(roi: Roi,height: float, width: float,window_size:float) -> Roi:
+def _slide_into(low: float, high: float, limit: float, size: float) -> Tuple[float, float]:
+    """
+    Slides the span [low, high] of length `size` back inside [0, limit] without
+    resizing it. A span longer than the limit is pinned to the origin, so it lands
+    in the same place whichever way it started out.
+    """
+    if size >= limit:
+        return 0.0, size
+    if low < 0:
+        return 0.0, size
+    if high > limit:
+        return limit - size, limit
+    return low, high
+
+
+def clamp_roi_to_image(roi: Roi, height: float, width: float, window_size: Optional[float] = None) -> Roi:
     """
     Takes a single per-timepoint crop window and slides it back inside the
-    image bounds if it's hanging off an edge, without changing it's size. Otherwise,
+    image bounds if it's hanging off an edge, without changing its size. Otherwise,
     a moving crop that does this would be trimmed there, and frames that differ in
-    size cannot be written as one image. A crop window larger than the image still 
+    size cannot be written as one image. A crop window larger than the image still
     gets trimmed, but identically at every timepoint, so each frame still matches.
+
+    `window_size` is the side length of the window. If omitted it is taken from the ROI.
     """
     ys = [y for y, _ in roi]
     xs = [x for _, x in roi]
     top, bottom, left, right = min(ys), max(ys), min(xs), max(xs)
-    
-    
-    if top < 0:
-        top = 0
-        bottom = window_size
-    elif bottom > height:
-        bottom = height
-        top = height-window_size
+    size_y = bottom - top if window_size is None else window_size
+    size_x = right - left if window_size is None else window_size
 
-    if left < 0:
-        left = 0
-        right = window_size
-    elif right > width:
-        right = width
-        left = width-window_size
-    
+    top, bottom = _slide_into(top, bottom, height, size_y)
+    left, right = _slide_into(left, right, width, size_x)
     return Roi((top, left), (top, right), (bottom, right), (bottom, left))
 
 
-def clamp_rois_to_image(rois: Dict[int, Roi], height: float, width: float,window_size:float) -> Dict[int, Roi]:
+def clamp_rois_to_image(rois: Dict[int, Roi], height: float, width: float, window_size: Optional[float] = None) -> Dict[int, Roi]:
     """
-    Takes a set of per-timepoint crop windows and slides each one back inside the
-    image bounds if it's hanging off an edge, without changing it's size. Otherwise,
-    a moving crop that does this would be trimmed there, and frames that differ in
-    size cannot be written as one image. A crop window larger than the image still 
-    gets trimmed, but identically at every timepoint, so each frame still matches.
+    Applies `clamp_roi_to_image` to every per-timepoint crop window of a track.
     """
-    clamped: Dict[int, Roi] = {}
-    for time, roi in rois.items():
-        ys = [y for y, _ in roi]
-        xs = [x for _, x in roi]
-        top, bottom, left, right = min(ys), max(ys), min(xs), max(xs)
-        
-        
-        if top < 0:
-            top = 0
-            bottom = window_size
-        elif bottom > height:
-            bottom = height
-            top = height-window_size
-
-        if left < 0:
-            left = 0
-            right = window_size
-        elif right > width:
-            right = width
-            left = width-window_size
-        
-        
-        #shift_y = -top if top < 0 else (height - bottom if bottom > height else 0.0)
-        #shift_x = -left if left < 0 else (width - right if right > width else 0.0)
-
-        #top, bottom = top + shift_y, bottom + shift_y
-        #left, right = left + shift_x, right + shift_x
-        clamped[time] = Roi((top, left), (top, right), (bottom, right), (bottom, left))
-    return clamped
+    return {
+        time: clamp_roi_to_image(roi, height, width, window_size)
+        for time, roi in rois.items()
+    }
 
 
 def read_imagej_roi(roi_path: PathLike) -> List[Roi]:

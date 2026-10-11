@@ -266,7 +266,7 @@ class LatticeData(OutputParams, DeskewParams):
         with ignore_keyerror():
             height, width = values["derived"].deskew_vol_shape[1:]
             for id,roi in v.roi_by_time.items():
-                v.roi_by_time[id] = clamp_rois_to_image(roi, height, width,v.window_for_track(id))
+                v.roi_by_time[id] = clamp_rois_to_image(roi, height, width)
         return v
 
     @validator("crop")
@@ -617,7 +617,7 @@ class LatticeData(OutputParams, DeskewParams):
             roi_index = cast(int, slice.roi_index)
             roi = self.crop.roi_for_time(slice.time, roi_index)
             height, width = self.derived.deskew_vol_shape[1:]
-            roi = clamp_roi_to_image(roi, height, width,self.crop.window_for_track(roi_index))
+            roi = clamp_roi_to_image(roi, height, width)
             deconv_args: dict[Any, Any] = {}
             if self.deconvolution is not None:
                 deconv_args = dict(
