@@ -999,5 +999,6 @@ class TrackmateFields(NapariFieldGroup):
         return CropParams(
             trackmate_file=self.tracks_path.value,
             roi_units=RoiUnits.Microns,
-            trackmate_window_size=self.window_size.value
+            roi_subset=[int(self.track_id.value)],
+            trackmate_window_size_default=float(self.window_size.value),
         )
