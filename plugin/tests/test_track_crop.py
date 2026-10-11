@@ -2,13 +2,14 @@
 Headless tests for the plugin side of track-driven cropping. The methods are
 called on lightweight stand-ins for `self`, so no napari viewer is needed.
 """
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 
 import numpy as np
 import pytest
 
 from lls_core.cropping import RoiUnits
 from lls_core.models.crop import CropParams
+from lls_core.trackmate_io import load_trackmate_tracks
 from napari_lattice.dock_widget import LLSZWidget
 from napari_lattice.fields import TrackmateFields
 
@@ -59,14 +60,18 @@ def tracks_file(tmp_path):
     return path
 
 
-def fake_trackmate(path=None, enabled=True, track=TRACK, window=4.0, selected="0"):
-    return SimpleNamespace(
+def fake_trackmate(path=None, enabled=True, selected=("0",), window=4.0, overrides=""):
+    fake = SimpleNamespace(
         fields_enabled=SimpleNamespace(value=enabled),
         window_size=SimpleNamespace(value=window),
+        window_overrides=SimpleNamespace(value=overrides),
         tracks_path=SimpleNamespace(value=path),
-        track_id=SimpleNamespace(value=selected),
-        _get_selected_track_data=lambda: track,
+        track_ids=SimpleNamespace(value=list(selected)),
+        _tracks=load_trackmate_tracks(path) if path else {},
     )
+    for name in ("_get_selected_track_ids", "_get_window_overrides"):
+        setattr(fake, name, MethodType(getattr(TrackmateFields, name), fake))
+    return fake
 
 
 def test_disabled_returns_none():
@@ -74,13 +79,13 @@ def test_disabled_returns_none():
 
 
 def test_disabled_does_not_require_a_track():
-    # 'All' selected but tab not enabled -> just viewing tracks, no error
-    assert TrackmateFields._make_model(fake_trackmate(enabled=False, track=None)) is None
+    # nothing selected but tab not enabled -> just viewing tracks, no error
+    assert TrackmateFields._make_model(fake_trackmate(enabled=False, selected=())) is None
 
 
-def test_all_tracks_selected_is_rejected():
-    with pytest.raises(ValueError, match="single track"):
-        TrackmateFields._make_model(fake_trackmate(track=None))
+def test_no_track_selected_is_rejected(tracks_file):
+    with pytest.raises(ValueError, match="at least one track"):
+        TrackmateFields._make_model(fake_trackmate(tracks_file, selected=()))
 
 
 def test_builds_micron_crop_from_selected_track(tracks_file):
@@ -94,3 +99,29 @@ def test_builds_micron_crop_from_selected_track(tracks_file):
     ys = [y for y, _ in crop.roi_by_time[0][0]]
     xs = [x for _, x in crop.roi_by_time[0][0]]
     assert (min(ys), max(ys), min(xs), max(xs)) == (18, 22, 8, 12)
+
+
+def test_builds_a_crop_for_every_selected_track(tracks_file):
+    crop = TrackmateFields._make_model(fake_trackmate(tracks_file, selected=("1", "0")))
+    assert crop.roi_subset == [0, 1]
+    assert set(crop.roi_by_time) == {0, 1}
+
+
+def test_each_track_can_have_its_own_window_size(tracks_file):
+    fake = fake_trackmate(tracks_file, selected=("0", "1"), window=4.0, overrides="1:10")
+    crop = TrackmateFields._make_model(fake)
+
+    def size(roi):
+        ys = [y for y, _ in roi]
+        return max(ys) - min(ys)
+
+    assert size(crop.roi_by_time[0][0]) == 4.0
+    assert size(crop.roi_by_time[1][0]) == 10.0
+
+
+def test_overrides_for_unselected_tracks_are_ignored(tracks_file):
+    crop = TrackmateFields._make_model(
+        fake_trackmate(tracks_file, selected=("0",), overrides="1:10")
+    )
+    assert crop.window_for_track(0) == 4.0
+    assert not crop.trackmate_window_size
