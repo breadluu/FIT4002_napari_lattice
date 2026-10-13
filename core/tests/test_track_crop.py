@@ -12,7 +12,7 @@ import logging
 
 import numpy as np
 import pytest
-from pydantic.v1 import ValidationError
+from pydantic import ValidationError
 from xarray import DataArray
 
 from lls_core.cropping import (

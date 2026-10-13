@@ -278,6 +278,7 @@ class LatticeData(OutputParams, DeskewParams):
         """
         from lls_core.cropping import RoiUnits, scale_rois
         from lls_core.models.utils import ignore_keyerror
+        values = info.data
         if v is None or v.roi_units == RoiUnits.Pixels:
             return v
         with ignore_keyerror():
@@ -299,12 +300,14 @@ class LatticeData(OutputParams, DeskewParams):
 
 
     @field_validator("crop")
-    def keep_track_rois_in_frame(cls, v: Optional[CropParams], values: dict) -> Optional[CropParams]:
+    @classmethod
+    def keep_track_rois_in_frame(cls, v: Optional[CropParams], info: ValidationInfo) -> Optional[CropParams]:
         """
         Keeps an ROI crop window from drifting outside the deskewed image.
         """
         from lls_core.cropping import clamp_rois_to_image
         from lls_core.models.utils import ignore_keyerror
+        values = info.data
 
         if v is None or v.roi_by_time is None:
             return v
@@ -466,42 +469,49 @@ class LatticeData(OutputParams, DeskewParams):
             raise ValueError("The output time range must be a subset of the total available time points")
         return v
 
-    @root_validator(skip_on_failure=True)
-    def restrict_time_range_to_track(cls, values: dict) -> dict:
+    @model_validator(mode="after")
+    def restrict_time_range_to_track(self) -> "LatticeData":
         """
         Confine the run to the timepoints a track-driven crop covers, as those are the
         only ones it has a rectangle for. A narrower range asked for by the user is
         kept. A range that misses the track, or a track with holes in it, is reported
         here rather than part-way through a long run.
         """
-        crop = values.get("crop")
-        if crop:
-            roiSubset = crop.roi_subset
-            time_range = values.get("time_range")
-            values["time_range_by_track"] = {}
-            if crop is None or crop.roi_by_time is None or time_range is None:
-                return values
-            for id in roiSubset:
-                roi = crop.roi_by_time[id]
-                covered = range(min(roi), max(roi) + 1)
-                start = max(time_range.start, covered.start)
-                stop = min(time_range.stop, covered.stop)
-                if start >= stop:
-                    raise ValueError(
-                        f"The time range {time_range.start}-{time_range.stop - 1} does not overlap "
-                        f"the track, which covers timepoints {covered.start}-{covered.stop - 1}"
-                    )
+        crop = self.crop
+        if crop is None:
+            return self
 
-                missing = [time for time in range(start, stop) if time not in roi]
-                if missing:
-                    raise ValueError(
-                        f"The track has no position at timepoints {missing}, so there is nothing to "
-                        "centre the crop on there. Close the gaps in the track, or ask for a time "
-                        "range that avoids them."
-                    )
+        by_track: dict[int, range] = {}
+        # validate_assignment is on, so assigning through setattr would re-run the
+        # validators (and recurse into this one). The value is built here from
+        # already-validated fields, so write it to the instance directly.
+        self.__dict__["time_range_by_track"] = by_track
 
-                values["time_range_by_track"][id] = range(start, stop)
-        return values
+        time_range = self.time_range
+        if crop.roi_by_time is None or time_range is None:
+            return self
+
+        for id in crop.roi_subset:
+            roi = crop.roi_by_time[id]
+            covered = range(min(roi), max(roi) + 1)
+            start = max(time_range.start, covered.start)
+            stop = min(time_range.stop, covered.stop)
+            if start >= stop:
+                raise ValueError(
+                    f"The time range {time_range.start}-{time_range.stop - 1} does not overlap "
+                    f"the track, which covers timepoints {covered.start}-{covered.stop - 1}"
+                )
+
+            missing = [time for time in range(start, stop) if time not in roi]
+            if missing:
+                raise ValueError(
+                    f"The track has no position at timepoints {missing}, so there is nothing to "
+                    "centre the crop on there. Close the gaps in the track, or ask for a time "
+                    "range that avoids them."
+                )
+
+            by_track[id] = range(start, stop)
+        return self
 
     @field_validator("deconvolution")
     @classmethod

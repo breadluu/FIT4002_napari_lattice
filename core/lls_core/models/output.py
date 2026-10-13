@@ -1,6 +1,6 @@
 from strenum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 from pandas import DataFrame
 from lls_core.models.utils import FieldAccessModel, enum_choices
 from pydantic import DirectoryPath, Field, ValidationInfo, field_validator
@@ -45,7 +45,7 @@ class OutputParams(FieldAccessModel):
         description="The range of times to process. This defaults to all time points in the image array.",
         cli_description="The range of times to process, as an array with two items: the first and last time index. This defaults to all time points in the image array."
     )
-    time_range_by_track: dict[int,range] = Field(
+    time_range_by_track: Optional[Dict[int, range]] = Field(
         default = None,
         description="The range of times to process for a track. This defaults to all time points in the image array."
     )
