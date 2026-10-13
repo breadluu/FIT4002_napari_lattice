@@ -23,7 +23,7 @@ from lls_core.models.deskew import DefinedPixelSizes
 from lls_core.models.output import SaveFileType
 from magicclass import FieldGroup, MagicTemplate, field, magicclass, set_design, vfield
 from magicclass.fields import MagicField
-from magicclass.widgets import ComboBox, Label, Widget
+from magicclass.widgets import ComboBox, Label, Select, Widget
 from napari.layers import Image, Shapes
 from napari.types import ShapesData
 from napari.utils.notifications import show_warning
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 def adjust_maximum(widget: "RangedWidget", max: int):
     """
     Updates the maximum value
@@ -51,6 +52,7 @@ def adjust_maximum(widget: "RangedWidget", max: int):
     widget.max = max
     if widget.value > max:
         widget.value = max
+
 
 def exception_to_html(e: BaseException) -> str:
     """
@@ -67,6 +69,7 @@ def exception_to_html(e: BaseException) -> str:
     else:
         return f"{type(e).__name__}: {e}"
 
+
 def get_friendly_validations(model: FieldGroup) -> str:
     """
     Generates a BaseModel, but returns validation errors in a user friendly way
@@ -77,23 +80,27 @@ def get_friendly_validations(model: FieldGroup) -> str:
     except BaseException as e:
         return exception_to_html(e)
 
+
 class PixelSizeSource(StrEnum):
     Metadata = "Image Metadata"
     Manual = "Manual"
 
+
 class WorkflowSource(StrEnum):
     ActiveWorkflow = "Active Workflow"
     CustomPath = "Custom Path"
+
 
 class BackgroundSource(StrEnum):
     Auto = "Automatic"
     SecondLast = "Second Last"
     Custom = "Custom"
 
+
 def dimension_order_options(ndims: Optional[int]) -> List[str]:
     """
     Dimension-order choices offered for an image stack of the given dimensionality,
-    including the "Get from Metadata" option. Kept as a separate function so 
+    including the "Get from Metadata" option. Kept as a separate function so
     we can test interaction between the reader -> GUI without a Qt widget: For example, a
     single-channel stack that the reader keeps 5D must offer the TCZYX/CTZYX orders.
     """
@@ -108,6 +115,7 @@ def dimension_order_options(ndims: Optional[int]) -> List[str]:
         return ["TCZYX", "CTZYX"] + default
     else:
         raise Exception("Only 3-5 dimensional arrays are supported")
+
 
 def enable_field(field: MagicField, enabled: bool = True) -> None:
     """
@@ -126,10 +134,11 @@ def enable_field(field: MagicField, enabled: bool = True) -> None:
         except RuntimeError:
             pass
 
+
 FieldValueType = TypeVar("FieldValueType")
 SelfType = TypeVar("SelfType")
 def enable_if(fields: List[MagicField]):
-    """ 
+    """
     Makes an event handler that dynamically disables and enables a set of fields based on a criteria
     Args:
         condition: A function that takes an instance of the class and returns True if the fields should be enabled
@@ -165,18 +174,20 @@ def enable_if(fields: List[MagicField]):
             return handler
 
         return make_handler(fn)
-    
+
     return _decorator
+
 
 class StackAlong(StrEnum):
     CHANNEL = "Channel"
     TIME = "Time"
 
+
 class NapariFieldGroup(MagicTemplate):
     def __post_init__(self):
         self.changed.connect(self._validate, unique=False)
 
-        # Style the error label. 
+        # Style the error label.
         # We have to check this is a QLabel because in theory this might run in a non-QT backend
         errors = self.errors.native
         from qtpy.QtWidgets import QLabel
@@ -229,7 +240,7 @@ class NapariFieldGroup(MagicTemplate):
         from importlib_resources import as_file
         tab_parent = self._get_parent_tab_widget()
         index = self._get_tab_index()
-            
+
         if hasattr(self, "fields_enabled") and not self.fields_enabled.value:
             # Special case for "diabled" sections
             icon = GREY
@@ -256,12 +267,14 @@ class NapariFieldGroup(MagicTemplate):
     def _make_model(self):
         raise NotImplementedError()
 
+
 class DeskewKwargs(NapariImageParams):
     angle: float
     skew: DeskewDirection
     invert_scan_direction: bool
     coverslip_rotation: bool
     engine: DeskewEngine
+
 
 @magicclass
 class DeskewFields(NapariFieldGroup):
@@ -338,7 +351,8 @@ class DeskewFields(NapariFieldGroup):
     # merge_all_channels = field(False).with_options(label="Merge all Channels")
     quick_deskew = field(False).with_options(
         label="Quick Deskew",
-        tooltip = "View the deskewed image. This does NOT generate a new image, but instead transforms\nthe current image in the viewer. Use `Preview` to generate a new image.")
+        tooltip = "View the deskewed image. This does NOT generate a new image, but instead transforms\nthe current image in the viewer. Use `Preview` to generate a new image."
+    )
     errors = field(Label).with_options(label="Errors")
     # Live readout of how large the deskewed volume will be. Deskewing grows the image
     # along the shear axis, so an input that loads fine can produce a buffer the GPU
@@ -413,10 +427,10 @@ class DeskewFields(NapariFieldGroup):
 
     @img_layer.connect
     @enable_if([stack_along])
-    def _hide_stack_along(self, img_layer: List[Image]):
-        # Hide the "Stack Along" option if we only have one image
+    def _hide_stock_along(self, img_layer: List[Image]):
+        # Hide the "Stock Along" option if we only have one image
         return len(img_layer) > 1
-    
+
     @coverslip_rotation.connect
     def _on_coverslip_toggled(self):
         ticked = self.coverslip_rotation.value
@@ -462,7 +476,7 @@ class DeskewFields(NapariFieldGroup):
         if quick_deskew:
             try:
                 #initialize lattice model
-                lattice = self._make_model() 
+                lattice = self._make_model()
             except ValidationError as e:
                 logger.info(f"Validation Error: {e}")
                 # Ignore if the deskew parameters are invalid
@@ -477,7 +491,7 @@ class DeskewFields(NapariFieldGroup):
             affine_transform = lattice.derived.deskew_affine_transform_zyx
             ndim_display = 3
         else:
-            try: 
+            try:
                 pixels = self._get_kwargs()["physical_pixel_sizes"]
                 scale = (
                             pixels.Z,
@@ -517,13 +531,13 @@ class DeskewFields(NapariFieldGroup):
                 # re-apply (both handlers fire on the same change) that cost seconds
                 # per parameter tweak. No-op affine assignments are skipped.
                 apply_layer_transform(image, affine=new_affine)
-        
+
         try:
             from napari_lattice.utils import get_viewer
             viewer = get_viewer()
             viewer.dims.ndisplay = ndim_display
             viewer.reset_view()
-        except: 
+        except:
             pass
 
     def _image_params_key(self):
@@ -640,6 +654,7 @@ class DeskewFields(NapariFieldGroup):
         if isinstance(native, QLabel):
             native.setStyleSheet("color: orange;" if too_big else "")
 
+
 @magicclass
 class DeconvolutionFields(NapariFieldGroup):
     # A counterpart to the DeconvolutionParams Pydantic class
@@ -694,6 +709,7 @@ class DeconvolutionFields(NapariFieldGroup):
             psf=[psf for psf in self.psf.value if psf.is_file()],
             decon_num_iter=self.decon_num_iter.value
         )
+
 
 @magicclass
 class CroppingFields(NapariFieldGroup):
@@ -791,10 +807,11 @@ class CroppingFields(NapariFieldGroup):
             return CropParams(
                 # Convert from the input image space to the deskewed image space
                 # We assume here that dx == dy which isn't ideal
-                roi_list=rois, 
+                roi_list=rois,
                 z_range=tuple(self.z_range.value),
             )
         return None
+
 
 @magicclass
 class WorkflowFields(NapariFieldGroup):
@@ -827,6 +844,7 @@ class WorkflowFields(NapariFieldGroup):
         # the output metadata sidecar. Loading here would discard it: a Workflow does not
         # remember where it was read from, so this is the only chance to keep it.
         return self.workflow_path.value
+
 
 @magicclass
 class OutputFields(NapariFieldGroup):
@@ -904,3 +922,247 @@ class OutputFields(NapariFieldGroup):
             adjust_maximum(widget, img.sizes["T"])
         for widget in self.channel_range:
             adjust_maximum(widget, img.sizes["C"])
+
+
+@magicclass
+class TrackmateFields(NapariFieldGroup):
+    header = field(dedent("""
+        Load a TrackMate export to view its tracks. Once loaded, enable the tab to make the
+        run follow the selected tracks: at each timepoint the crop is a box centred on the
+        tracked object, instead of a fixed region. The yellow boxes on the canvas show how
+        large the crop window is, and update as you change the size.
+    """), widget_type="Label")
+    tracks_path = field(Path).with_options(
+        label="TrackMate tracks file",
+        tooltip="Path to a TrackMate 'tracks-only' XML export, or a 'spots in tracks statistics' CSV export"
+    )
+    layer_name = field("").with_options(
+        label="Layer name (optional)",
+        tooltip="Optional name for the tracks layer"
+    )
+
+    @set_design(text="Load TrackMate tracks")
+    def load_tracks(self):
+        from lls_core.trackmate_io import load_trackmate_tracks
+        path = self.tracks_path.value
+        if path is None:
+            raise ValueError("No file selected")
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+        self._tracks = load_trackmate_tracks(path)
+        self.track_ids.reset_choices()
+        self.track_ids.value = []
+        # Everything below only means something once there are tracks to act on.
+        self._set_revealed(True)
+        self._render_tracks_layer()
+        self._render_preview_layer()
+        self._follow_viewer_time()
+
+    # Everything from here on is hidden until a file has been loaded.
+    fields_enabled = field(False, label="Enabled")
+
+    def _get_track_id_options(self, _) -> List[str]:
+        tracks = getattr(self, "_tracks", None) or {}
+        return sorted(tracks, key=int)
+
+    track_ids = field(Select).with_choices(_get_track_id_options).with_options(
+        label="Tracks",
+        tooltip="The tracks to crop along. One crop is produced per selected track. With nothing selected every track is displayed, but none can be cropped.",
+    )
+
+    @set_design(text="Select All")
+    def select_all(self) -> None:
+        self.track_ids.value = self.track_ids.choices
+
+    @set_design(text="Deselect All")
+    def deselect_all(self) -> None:
+        self.track_ids.value = []
+
+    window_size = field(30.0).with_options(
+        label="Crop Window (µm)",
+        tooltip="Width and height of the box cropped at each timepoint, centred on the track. Used for every selected track without its own size below.",
+        min=0.0,
+        step=1.0,
+    )
+    window_overrides = field("").with_options(
+        label="Per-track sizes (µm)",
+        tooltip="Optional window sizes for individual tracks, written as track:size pairs, e.g. '3:20, 7:45'. Selected tracks not listed use the size above.",
+    )
+    show_preview = field(True).with_options(
+        label="Preview crop window",
+        tooltip="Draw the crop window of each selected track on the canvas, following the current timepoint.",
+    )
+    errors = field(Label).with_options(label="Errors")
+
+    # The widgets that stay hidden until a file has been loaded.
+    _REVEALED_AFTER_LOAD = (
+        "fields_enabled", "track_ids", "select_all", "deselect_all",
+        "window_size", "window_overrides", "show_preview",
+    )
+
+    def __post_init__(self):
+        self._set_revealed(False)
+
+    def _set_revealed(self, revealed: bool) -> None:
+        for name in self._REVEALED_AFTER_LOAD:
+            self[name].visible = revealed
+
+    @fields_enabled.connect
+    @enable_if([window_size, window_overrides, track_ids])
+    def _enable_tracked_crop(self, enabled: bool) -> bool:
+        # Only the crop settings are gated: loading a file and browsing its tracks
+        # stays available whether or not the run is going to follow one.
+        return enabled
+
+    @track_ids.connect
+    def _on_track_ids_changed(self):
+        if getattr(self, "_tracks", None):
+            self._render_tracks_layer()
+            self._render_preview_layer()
+
+    @window_size.connect
+    @window_overrides.connect
+    @show_preview.connect
+    def _on_window_changed(self):
+        if getattr(self, "_tracks", None):
+            self._render_preview_layer()
+
+    def _get_selected_track_ids(self) -> List[str]:
+        """The IDs of the tracks picked in the Tracks box, in numeric order."""
+        tracks = getattr(self, "_tracks", None)
+        if not tracks:
+            return []
+        return sorted((str(it) for it in (self.track_ids.value or []) if str(it) in tracks), key=int)
+
+    def _get_window_overrides(self, track_ids: Optional[List[str]] = None) -> dict:
+        """
+        The per-track window sizes, restricted to the given tracks if any are given.
+        Raises a ValueError describing the problem if the text can't be understood.
+        """
+        from lls_core.cropping import parse_track_window_sizes
+        sizes = parse_track_window_sizes(self.window_overrides.value)
+        if track_ids is not None:
+            sizes = {key: value for key, value in sizes.items() if key in track_ids}
+        return sizes
+
+    def _tracks_layer_name(self) -> str:
+        return self.layer_name.value.strip() or self.tracks_path.value.stem
+
+    def _render_tracks_layer(self):
+        """(re)draws the tracks layer from `self._tracks`, filtered to the selected tracks."""
+        from napari_lattice.utils import get_viewer
+        from lls_core.trackmate_io import trackmate_tracks_to_napari
+
+        tracks = self._tracks
+        selected = self._get_selected_track_ids()
+        if selected:
+            tracks = {key: tracks[key] for key in selected}
+        data, properties = trackmate_tracks_to_napari(tracks)
+
+        viewer = get_viewer()
+        name = self._tracks_layer_name()
+        # Changing layers makes the viewer emit dims events part-way through its own
+        # bookkeeping. `_drawing` tells the time-follower to leave those alone.
+        self._drawing = True
+        try:
+            if name in viewer.layers:
+                del viewer.layers[name]
+            viewer.add_tracks(data, properties=properties, name=name, tail_width=2)
+        finally:
+            self._drawing = False
+
+    def _render_preview_layer(self):
+        """
+        (re)draws the crop window of every selected track as a rectangle, at the
+        viewer's current timepoint. The layer is unscaled, like the crop tab's, so
+        it is in the same microns as the tracks and sits where the crop would.
+        """
+        import numpy as np
+        from lls_core.cropping import track_window_previews
+        from napari_lattice.utils import get_viewer
+
+        viewer = get_viewer()
+        self._previewed_time = self._current_time(viewer)
+        name = f"{self._tracks_layer_name()} crop window"
+
+        selected = self._get_selected_track_ids()
+        previews = {}
+        if self.show_preview.value and selected:
+            try:
+                overrides = self._get_window_overrides(selected)
+            except ValueError as e:
+                self.errors.value = str(e)
+            else:
+                self.errors.value = ""
+                previews = track_window_previews(
+                    self._tracks, selected,
+                    default_size=float(self.window_size.value),
+                    overrides=overrides,
+                    time=self._previewed_time,
+                )
+
+        self._drawing = True
+        try:
+            if name in viewer.layers:
+                del viewer.layers[name]
+            if previews:
+                viewer.add_shapes(
+                    [np.array(roi, dtype=float) for roi in previews.values()],
+                    shape_type="rectangle",
+                    name=name,
+                    edge_color="yellow",
+                    edge_width=1,
+                    face_color=[1, 1, 1, 0],
+                )
+        finally:
+            self._drawing = False
+
+    @staticmethod
+    def _current_time(viewer) -> Optional[int]:
+        """The timepoint the viewer is showing, or None if it has no time axis."""
+        dims = getattr(viewer, "dims", None)
+        if dims is None or dims.ndim < 4:
+            return None
+        return int(dims.current_step[-4])
+
+    def _follow_viewer_time(self) -> None:
+        """Move the preview windows along with the viewer's time slider. Done once."""
+        if getattr(self, "_following_time", False):
+            return
+        from napari_lattice.utils import get_viewer
+        dims = getattr(get_viewer(), "dims", None)
+        if dims is None:
+            return
+        dims.events.current_step.connect(lambda event=None: self._on_time_changed())
+        self._following_time = True
+
+    def _on_time_changed(self) -> None:
+        """Redraw the preview, but only if the timepoint is not the one already drawn."""
+        from napari_lattice.utils import get_viewer
+        if getattr(self, "_tracks", None) is None or getattr(self, "_drawing", False):
+            return
+        if self._current_time(get_viewer()) == getattr(self, "_previewed_time", None):
+            return
+        self._render_preview_layer()
+
+    def _make_model(self) -> Optional[CropParams]:
+        """
+        The cropping parameters for a run that follows the selected tracks, or None
+        when this tab is only being used to look at the tracks.
+        """
+        if not self.fields_enabled.value:
+            return None
+        selected = self._get_selected_track_ids()
+        if not selected:
+            raise ValueError(
+                "Choose at least one track to crop along. With none selected the tab only displays the tracks."
+            )
+        overrides = self._get_window_overrides(selected)
+        extra = {"trackmate_window_size": overrides} if overrides else {}
+        return CropParams(
+            trackmate_file=self.tracks_path.value,
+            roi_units=RoiUnits.Microns,
+            roi_subset=[int(it) for it in selected],
+            trackmate_window_size_default=float(self.window_size.value),
+            **extra,
+        )
