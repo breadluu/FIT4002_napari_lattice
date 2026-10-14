@@ -120,8 +120,8 @@ class DeskewParams(FieldAccessModel):
         description="Which backend performs the deskew computation. `GPU` (default) uses pyclesperanto/OpenCL "
                     "and requires a working GPU. `CPU` uses a Numba-jitted implementation of the same "
                     "orthogonal-interpolation algorithm and needs no GPU, at the cost of being slower on large "
-                    "volumes. `CPU` currently only supports the standard deskew (`coverslip_rotation=True`), and "
-                    "is not compatible with ROI cropping."
+                    "volumes. `CPU` currently only supports the standard deskew (`coverslip_rotation=True`). "
+                    "ROI cropping, including tracked-ROI cropping, works on both engines."
     )
     derived: DerivedDeskewFields = Field(
         init_var=False,
