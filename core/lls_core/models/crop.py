@@ -16,28 +16,28 @@ class CropParams(FieldAccessModel):
     """
     trackmate_file: Optional[Path] = Field(
         description="File path to the Trackmate file for tracked ROIs. Accepts .xml or .csv files.",
-        cli_description= "File path to the Trackmate file for tracked ROIs. Accepts .xml or .csv files.",
+        json_schema_extra={"cli_description": "File path to the Trackmate file for tracked ROIs. Accepts .xml or .csv files."},
         default = None
     )
     trackmate_window_size: Optional[Dict[str, float]] = Field(
         description="cropping window size for TrackMate ROIs, defines the `N × N` square that defines the crop size in μm",
-        cli_description="cropping window size for TrackMate ROIs in μm",
+        json_schema_extra={"cli_description": "cropping window size for TrackMate ROIs in μm"},
         default = None
     )
     trackmate_window_size_default: float = Field(
         description="default cropping window size for TrackMate ROIs, defines the `N × N` square that defines the crop size in μm",
-        cli_description="default cropping window size for TrackMate ROIs in μm",
+        json_schema_extra={"cli_description": "default cropping window size for TrackMate ROIs in μm"},
         default = 30.0
     )
     roi_list: List[Roi] = Field(
         description="List of regions of interest, each of which must be an `N × D` array, where N is the number of vertices and D the coordinates of each vertex. This can alternatively be provided as a `str` or `Path`, or a list of those, in which case they are interpreted as paths to ImageJ ROI (.roi/.zip) or napari shapes (.csv) files that are read from disk.",
-        cli_description="Either a list of regions of interest, each a file path to an ImageJ ROI (.roi/.zip) or napari shapes (.csv) file, or a singular trackmate tracking file, either a (.xml) or (.csv) file.",
+        json_schema_extra={"cli_description": "Either a list of regions of interest, each a file path to an ImageJ ROI (.roi/.zip) or napari shapes (.csv) file, or a singular trackmate tracking file, either a (.xml) or (.csv) file."},
         default = []
     )
     roi_units: RoiUnits = Field(
         default=RoiUnits.Auto,
         description="The units the `roi_list` coordinates are in. 'Auto' takes it from the file type: ImageJ ROIs are pixels, and a napari shapes CSV saved from the plugin's crop layer is microns, because that layer is unscaled while the image layer carries the pixel size. Set it explicitly for a CSV written by anything else.",
-        cli_description="Units of the ROI coordinates. 'Auto' (default) reads .roi/.zip as Pixels and .csv as Microns.",
+        json_schema_extra={"cli_description": "Units of the ROI coordinates. 'Auto' (default) reads .roi/.zip as Pixels and .csv as Microns."},
     )
     roi_subset: List[int] = Field(
         description="A subset of all the ROIs to process. Each list item should be an index into the ROI list indicating an ROI to include. This allows you to process only a subset of the regions from a ROI file specified using the `roi_list` parameter. If `None`, it is assumed that you want to process all ROIs.",
@@ -47,7 +47,7 @@ class CropParams(FieldAccessModel):
     z_range: Optional[Tuple[NonNegativeInt, NonNegativeInt]] = Field(
         default=None,
         description="The range of Z slices to take as a tuple of the form `(first, last)`. All Z slices before the first index or after the last index will be cropped out.",
-        cli_description="An array with two items, indicating the index of the first and last Z slice to include."
+        json_schema_extra={"cli_description": "An array with two items, indicating the index of the first and last Z slice to include."}
     )
     roi_by_time: Optional[Dict[int, Dict[int, Roi]]] = Field(
         default=None,

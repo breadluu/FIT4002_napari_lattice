@@ -215,7 +215,7 @@ params = LatticeData(
 The second is to use `LatticeData.parse_obj`, which takes a dictionary of options and allows incorrect types:
 
 ```python
-params = LatticeData.parse_obj({
+params = LatticeData.model_validate({
   "input_image": "/path/to/some/file.tiff",
   "save_dir": "/path/to/output"
 })

@@ -144,7 +144,7 @@ def test_config_block_round_trips(tmp_path, image_workflow):
 
     # input_image is null here (the image was passed in memory), so supply one to satisfy
     # the required field; everything else must survive the same parsing the CLI does.
-    rebuilt = LatticeData.parse_obj({**config, "input_image": _image(), "progress_bar": False})
+    rebuilt = LatticeData.model_validate({**config, "input_image": _image(), "progress_bar": False})
     assert rebuilt.angle == 32.0
     assert rebuilt.skew == DeskewDirection.X
     assert rebuilt.invert_scan_direction is True

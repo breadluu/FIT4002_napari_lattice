@@ -79,11 +79,11 @@ class DerivedDeskewFields(FieldAccessModel):
 class DeskewParams(FieldAccessModel):
     input_image: DataArray = Field(
         description="A 3-5D array containing the image data. Can be anything convertible to an Xarray, including a `dask.array` or `numpy.ndarray`. Can also be provided as a `str`, in which case it must indicate the path to an image to load from disk.",
-        cli_description="A path to any standard image file (TIFF, H5 etc) containing a 3-5D array to process."
+        json_schema_extra={"cli_description": "A path to any standard image file (TIFF, H5 etc) containing a 3-5D array to process."}
     )
     input_image_path: Optional[Path] = Field(
         default=None,
-        cli_hide=True,
+        json_schema_extra={"cli_hide": True},
         description="Internal: the filesystem path the input image was loaded from, if any. "
                     "Set automatically when `input_image` is provided as a path, and used to re-open "
                     "the image lazily inside parallel worker processes. Not a user-facing parameter."
@@ -127,7 +127,7 @@ class DeskewParams(FieldAccessModel):
         init_var=False,
         default=None,
         description="Refer to the `DerivedDeskewFields` docstring",
-        cli_hide=True,
+        json_schema_extra={"cli_hide": True},
         validate_default=True
     )
     # Hack to ensure that .skew_dir behaves identically to .skew

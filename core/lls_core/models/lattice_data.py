@@ -114,12 +114,12 @@ class LatticeData(OutputParams, DeskewParams):
     workflow: Optional[Workflow] = Field(
         default=None,
         description="If defined, this is a workflow to add lightsheet processing onto",
-        cli_description="Path to a JSON file specifying a napari_workflow-compatible workflow to add lightsheet processing onto"
+        json_schema_extra={"cli_description": "Path to a JSON file specifying a napari_workflow-compatible workflow to add lightsheet processing onto"}
     )
 
     workflow_path: Optional[Path] = Field(
         default=None,
-        cli_hide=True,
+        json_schema_extra={"cli_hide": True},
         description="Internal: the filesystem path the workflow was loaded from, if any. "
                     "A `Workflow` object cannot be serialised back to a path, so output "
                     "metadata records this instead. Mirrors `input_image_path`; "
@@ -139,13 +139,13 @@ class LatticeData(OutputParams, DeskewParams):
     time_range: range = Field(
         default=None,
         description="The range of times to process. This defaults to all time points in the image array.",
-        cli_description="The range of times to process, as an array with two items: the first and last time index. This defaults to all time points in the image array.",
+        json_schema_extra={"cli_description": "The range of times to process, as an array with two items: the first and last time index. This defaults to all time points in the image array."},
         validate_default=True
     )
     channel_range: range = Field(
         default=None,
         description="The range of channels to process. This defaults to all time points in the image array.",
-        cli_description="The range of channels to process, as an array with two items: the first and last channel index. This defaults to all channels in the image array.",
+        json_schema_extra={"cli_description": "The range of channels to process, as an array with two items: the first and last channel index. This defaults to all channels in the image array."},
         validate_default=True
     )
 
@@ -697,7 +697,7 @@ class LatticeData(OutputParams, DeskewParams):
                     engine=self.engine,
                     **deconv_args
                 ))
-            yield slice.copy(update={"data": cropped, "roi_index": roi_index})
+            yield slice.model_copy(update={"data": cropped, "roi_index": roi_index})
 
     def _process_non_crop(self) -> Iterable[ImageSlice]:
         """

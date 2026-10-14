@@ -25,7 +25,7 @@ class DeconvolutionParams(FieldAccessModel):
     )
     psf_paths: List[Path] = Field(
         default=[],
-        cli_hide=True,
+        json_schema_extra={"cli_hide": True},
         description="Internal: the filesystem paths the PSFs were loaded from, if any. "
                     "The validated `psf` field holds arrays, which cannot be serialised "
                     "back to paths, so output metadata records these instead. "
