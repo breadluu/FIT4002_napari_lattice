@@ -160,13 +160,12 @@ class CropParams(FieldAccessModel):
         """
         from lls_core.cropping import units_for_path
         from lls_core.types import is_pathlike
-
-        if not isinstance(values, dict):
-            return values
+        from lls_core.trackmate_io import is_trackmate_file
+        
         if values.get("roi_units", RoiUnits.Auto) != RoiUnits.Auto:
             return values
 
-        values = dict(values)
+        is_trackmate = values.get("roi_list") and is_pathlike(values.get("roi_list")[0]) and is_trackmate_file(values.get("roi_list")[0])
         given = values.get("roi_list") or []
         if is_pathlike(given):
             given = [given]
@@ -178,7 +177,7 @@ class CropParams(FieldAccessModel):
             )
         if implied:
             values["roi_units"] = implied.pop()
-        elif values.get("roi_by_time") or values.get("trackmate_file"):
+        elif values.get("roi_by_time") or values.get("trackmate_file") or is_trackmate:
             # Track ROIs come from TrackMate, which uses microns.
             values["roi_units"] = RoiUnits.Microns
         else:

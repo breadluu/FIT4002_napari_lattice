@@ -24,6 +24,7 @@ from lls_core.models.output import SaveFileType
 from magicclass import FieldGroup, MagicTemplate, field, magicclass, set_design, vfield
 from magicclass.fields import MagicField
 from magicclass.widgets import ComboBox, Label, Select, Widget
+from magicgui.widgets import Container, FloatSpinBox
 from napari.layers import Image, Shapes
 from napari.types import ShapesData
 from napari.utils.notifications import show_warning
@@ -927,11 +928,19 @@ class OutputFields(NapariFieldGroup):
 @magicclass
 class TrackmateFields(NapariFieldGroup):
     header = field(dedent("""
-        Load a TrackMate export to view its tracks. Once loaded, enable the tab to make the
-        run follow the selected tracks: at each timepoint the crop is a box centred on the
-        tracked object, instead of a fixed region. The yellow boxes on the canvas show how
-        large the crop window is, and update as you change the size.
+        Crop along tracks from a TrackMate export instead of a fixed region: at each
+        timepoint the crop is a box centred on the tracked object.
+
+        1. Choose a TrackMate tracks file and click Load TrackMate tracks.
+        2. Tick Enabled to show the track options.
+        3. Pick the tracks to crop in the Tracks list. Click selects one track,
+            Ctrl+click adds or removes a track, Shift+click selects a range,
+            and Select All picks every track. One crop is saved per track.
+        4. Set the crop window size of each selected track. The yellow boxes on
+            the canvas show each window and update as you change its size.
     """), widget_type="Label")
+    # Hidden until a file has been loaded, like the track settings below.
+    fields_enabled = field(False, label="Enabled")
     tracks_path = field(Path).with_options(
         label="TrackMate tracks file",
         tooltip="Path to a TrackMate 'tracks-only' XML export, or a 'spots in tracks statistics' CSV export"
@@ -950,8 +959,11 @@ class TrackmateFields(NapariFieldGroup):
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
         self._tracks = load_trackmate_tracks(path)
+        # Sizes set for the previous file's tracks don't carry over to this one.
+        self._track_window_sizes = {}
         self.track_ids.reset_choices()
         self.track_ids.value = []
+        self._sync_track_windows()
         # Everything below only means something once there are tracks to act on.
         self._set_revealed(True)
         self._render_tracks_layer()
@@ -959,8 +971,6 @@ class TrackmateFields(NapariFieldGroup):
         self._follow_viewer_time()
 
     # Everything from here on is hidden until a file has been loaded.
-    fields_enabled = field(False, label="Enabled")
-
     def _get_track_id_options(self, _) -> List[str]:
         tracks = getattr(self, "_tracks", None) or {}
         return sorted(tracks, key=int)
@@ -978,15 +988,11 @@ class TrackmateFields(NapariFieldGroup):
     def deselect_all(self) -> None:
         self.track_ids.value = []
 
-    window_size = field(30.0).with_options(
+    # One window size box per selected track, rebuilt whenever the selection changes.
+    track_windows = field(Container).with_options(
         label="Crop Window (µm)",
-        tooltip="Width and height of the box cropped at each timepoint, centred on the track. Used for every selected track without its own size below.",
-        min=0.0,
-        step=1.0,
-    )
-    window_overrides = field("").with_options(
-        label="Per-track sizes (µm)",
-        tooltip="Optional window sizes for individual tracks, written as track:size pairs, e.g. '3:20, 7:45'. Selected tracks not listed use the size above.",
+        tooltip="Width and height of the box cropped at each timepoint, centred on the track.",
+        labels=True,
     )
     show_preview = field(True).with_options(
         label="Preview crop window",
@@ -994,38 +1000,74 @@ class TrackmateFields(NapariFieldGroup):
     )
     errors = field(Label).with_options(label="Errors")
 
-    # The widgets that stay hidden until a file has been loaded.
-    _REVEALED_AFTER_LOAD = (
-        "fields_enabled", "track_ids", "select_all", "deselect_all",
-        "window_size", "window_overrides", "show_preview",
-    )
+    # The size a track's window starts at when it is first selected.
+    _DEFAULT_WINDOW = CropParams.get_default("trackmate_window_size_default")
+
+    # The widgets shown only once a file has been loaded and the tab is enabled. The
+    # window sizes are not listed: they are shown whenever a track is selected.
+    _SHOWN_WHEN_ENABLED = ("track_ids", "select_all", "deselect_all", "show_preview")
 
     def __post_init__(self):
         self._set_revealed(False)
+        self._sync_track_windows()
+        # Hooks up validation, so the tab icon and errors follow the fields like the other tabs.
+        super().__post_init__()
 
     def _set_revealed(self, revealed: bool) -> None:
-        for name in self._REVEALED_AFTER_LOAD:
-            self[name].visible = revealed
+        """Shows the Enabled box once a file is loaded, and the track settings once it is ticked."""
+        self.fields_enabled.visible = revealed
+        for name in self._SHOWN_WHEN_ENABLED:
+            self[name].visible = revealed and self.fields_enabled.value
 
     @fields_enabled.connect
-    @enable_if([window_size, window_overrides, track_ids])
-    def _enable_tracked_crop(self, enabled: bool) -> bool:
-        # Only the crop settings are gated: loading a file and browsing its tracks
-        # stays available whether or not the run is going to follow one.
-        return enabled
+    def _enable_tracked_crop(self, enabled: bool) -> None:
+        if not enabled:
+            # Start from no tracks the next time the tab is enabled.
+            self.track_ids.value = []
+        self._set_revealed(bool(getattr(self, "_tracks", None)))
 
     @track_ids.connect
     def _on_track_ids_changed(self):
         if getattr(self, "_tracks", None):
+            self._sync_track_windows()
             self._render_tracks_layer()
             self._render_preview_layer()
 
-    @window_size.connect
-    @window_overrides.connect
     @show_preview.connect
     def _on_window_changed(self):
         if getattr(self, "_tracks", None):
             self._render_preview_layer()
+
+    def _sync_track_windows(self) -> None:
+        """
+        Rebuilds the window size boxes so there is one per selected track, in numeric
+        order. A track keeps the size it was given if it is deselected and picked again.
+        """
+        sizes = self._window_sizes()
+        self.track_windows.clear()
+        selected = self._get_selected_track_ids()
+        for track in selected:
+            box = FloatSpinBox(
+                value=sizes.setdefault(track, self._DEFAULT_WINDOW),
+                name=f"track_{track}",
+                label=f"Track {track}",
+                min=0.0,
+                max=10000.0,
+                step=1.0,
+            )
+            box.changed.connect(lambda value, track=track: self._on_track_window_changed(track, value))
+            self.track_windows.append(box)
+        self.track_windows.visible = bool(selected)
+
+    def _on_track_window_changed(self, track: str, value: float) -> None:
+        self._window_sizes()[track] = float(value)
+        self._on_window_changed()
+
+    def _window_sizes(self) -> dict:
+        """Every window size the user has set, by track ID, including unselected tracks."""
+        if getattr(self, "_track_window_sizes", None) is None:
+            self._track_window_sizes = {}
+        return self._track_window_sizes
 
     def _get_selected_track_ids(self) -> List[str]:
         """The IDs of the tracks picked in the Tracks box, in numeric order."""
@@ -1034,16 +1076,10 @@ class TrackmateFields(NapariFieldGroup):
             return []
         return sorted((str(it) for it in (self.track_ids.value or []) if str(it) in tracks), key=int)
 
-    def _get_window_overrides(self, track_ids: Optional[List[str]] = None) -> dict:
-        """
-        The per-track window sizes, restricted to the given tracks if any are given.
-        Raises a ValueError describing the problem if the text can't be understood.
-        """
-        from lls_core.cropping import parse_track_window_sizes
-        sizes = parse_track_window_sizes(self.window_overrides.value)
-        if track_ids is not None:
-            sizes = {key: value for key, value in sizes.items() if key in track_ids}
-        return sizes
+    def _get_track_window_sizes(self, track_ids: List[str]) -> dict:
+        """The window size of each of the given tracks, by track ID."""
+        sizes = self._window_sizes()
+        return {track: sizes.get(track, self._DEFAULT_WINDOW) for track in track_ids}
 
     def _tracks_layer_name(self) -> str:
         return self.layer_name.value.strip() or self.tracks_path.value.stem
@@ -1088,18 +1124,12 @@ class TrackmateFields(NapariFieldGroup):
         selected = self._get_selected_track_ids()
         previews = {}
         if self.show_preview.value and selected:
-            try:
-                overrides = self._get_window_overrides(selected)
-            except ValueError as e:
-                self.errors.value = str(e)
-            else:
-                self.errors.value = ""
-                previews = track_window_previews(
-                    self._tracks, selected,
-                    default_size=float(self.window_size.value),
-                    overrides=overrides,
-                    time=self._previewed_time,
-                )
+            previews = track_window_previews(
+                self._tracks, selected,
+                default_size=self._DEFAULT_WINDOW,
+                overrides=self._get_track_window_sizes(selected),
+                time=self._previewed_time,
+            )
 
         self._drawing = True
         try:
@@ -1157,12 +1187,9 @@ class TrackmateFields(NapariFieldGroup):
             raise ValueError(
                 "Choose at least one track to crop along. With none selected the tab only displays the tracks."
             )
-        overrides = self._get_window_overrides(selected)
-        extra = {"trackmate_window_size": overrides} if overrides else {}
         return CropParams(
             trackmate_file=self.tracks_path.value,
             roi_units=RoiUnits.Microns,
             roi_subset=[int(it) for it in selected],
-            trackmate_window_size_default=float(self.window_size.value),
-            **extra,
+            trackmate_window_size=self._get_track_window_sizes(selected),
         )
