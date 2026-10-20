@@ -36,8 +36,11 @@ def units_for_path(roi_path: PathLike) -> RoiUnits:
     """
     from pathlib import Path
     from os import fspath
+    from lls_core.trackmate_io import is_trackmate_file
 
-    if Path(fspath(roi_path)).suffix.lower() == ".csv":
+    is_trackmate = roi_path and is_trackmate_file(roi_path)
+
+    if Path(fspath(roi_path)).suffix.lower() == ".csv" or is_trackmate:
         return RoiUnits.Microns
     return RoiUnits.Pixels
 
