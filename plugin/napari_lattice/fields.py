@@ -764,6 +764,12 @@ class CroppingFields(NapariFieldGroup):
     def _enable_crop(self, enabled: bool) -> bool:
         return enabled
 
+    @connect_parent("trackmate_fields.fields_enabled")
+    def _on_tracked_crop_enabled(self, enabled: bool):
+        # Only one crop can apply to a run, so this tab is locked while ROI Tracking crops.
+        self.fields_enabled.enabled = not enabled
+        self.fields_enabled.tooltip = "Untick Enabled in the ROI Tracking tab to crop here" if enabled else None
+
     def _make_model(self) -> Optional[CropParams]:
         import numpy as np
         from lls_core.models.crop import Roi
@@ -998,6 +1004,12 @@ class TrackmateFields(NapariFieldGroup):
             # Start from no tracks the next time the tab is enabled.
             self.track_ids.value = []
         self._set_revealed(bool(getattr(self, "_tracks", None)))
+
+    @connect_parent("cropping_fields.fields_enabled")
+    def _on_fixed_crop_enabled(self, enabled: bool):
+        # Only one crop can apply to a run, so this tab is locked while the Crop tab crops.
+        self.fields_enabled.enabled = not enabled
+        self.fields_enabled.tooltip = "Untick Enabled in the Crop tab to crop here" if enabled else None
 
     @track_ids.connect
     def _on_track_ids_changed(self):
