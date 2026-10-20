@@ -24,8 +24,7 @@ CSV = (
 )
 
 HIDDEN_UNTIL_LOADED = [
-    "fields_enabled", "track_ids", "select_all", "deselect_all",
-    "window_size", "window_overrides", "show_preview",
+    "fields_enabled", "track_ids", "select_all", "deselect_all", "show_preview",
 ]
 
 
@@ -103,10 +102,52 @@ def test_preview_has_one_window_per_selected_track(loaded):
     assert len(_preview(viewer).data) == 1
 
 
+def _window_boxes(fields) -> dict:
+    return {box.label: box for box in fields.track_windows}
+
+
+def test_window_sizes_are_hidden_until_a_track_is_selected(loaded):
+    fields, _ = loaded
+    assert not _shown(fields.track_windows)
+    fields.track_ids.value = ["3"]
+    assert _shown(fields.track_windows)
+
+
+def test_there_is_a_window_size_for_each_selected_track(loaded):
+    fields, _ = loaded
+    fields.track_ids.value = ["3", "0"]
+    assert list(_window_boxes(fields)) == ["Track 0", "Track 3"]
+    assert all(box.value == 30.0 for box in fields.track_windows)
+
+    fields.track_ids.value = ["3"]
+    assert list(_window_boxes(fields)) == ["Track 3"]
+
+
+def test_a_reselected_track_keeps_its_window_size(loaded):
+    fields, _ = loaded
+    fields.track_ids.value = ["0", "3"]
+    _window_boxes(fields)["Track 3"].value = 12.0
+
+    fields.track_ids.value = ["0"]
+    fields.track_ids.value = ["0", "3"]
+    assert _window_boxes(fields)["Track 3"].value == 12.0
+
+
+def test_loading_a_file_forgets_the_window_sizes(loaded):
+    fields, _ = loaded
+    fields.track_ids.value = ["0"]
+    _window_boxes(fields)["Track 0"].value = 12.0
+
+    fields.load_tracks()
+    assert len(fields.track_windows) == 0
+    fields.track_ids.value = ["0"]
+    assert _window_boxes(fields)["Track 0"].value == 30.0
+
+
 def test_preview_is_the_window_size_centred_on_the_track(loaded):
     fields, viewer = loaded
-    fields.window_size.value = 10.0
     fields.track_ids.value = ["0"]
+    _window_boxes(fields)["Track 0"].value = 10.0
 
     ys, xs = _preview(viewer).data[0][:, 0], _preview(viewer).data[0][:, 1]
     assert (ys.min(), ys.max(), xs.min(), xs.max()) == (15.0, 25.0, 5.0, 15.0)
@@ -115,19 +156,18 @@ def test_preview_is_the_window_size_centred_on_the_track(loaded):
 def test_preview_updates_when_the_window_size_changes(loaded):
     fields, viewer = loaded
     fields.track_ids.value = ["0"]
-    fields.window_size.value = 10.0
+    _window_boxes(fields)["Track 0"].value = 10.0
     narrow = _preview(viewer).data[0][:, 0].ptp()
 
-    fields.window_size.value = 40.0
+    _window_boxes(fields)["Track 0"].value = 40.0
     assert _preview(viewer).data[0][:, 0].ptp() == 40.0
     assert narrow == 10.0
 
 
-def test_per_track_sizes_override_the_default(loaded):
+def test_each_track_has_its_own_window_size(loaded):
     fields, viewer = loaded
-    fields.window_size.value = 10.0
-    fields.window_overrides.value = "3:30"
     fields.track_ids.value = ["0", "3"]
+    _window_boxes(fields)["Track 0"].value = 10.0
 
     sizes = sorted(float(shape[:, 0].ptp()) for shape in _preview(viewer).data)
     assert sizes == [10.0, 30.0]
@@ -142,21 +182,11 @@ def test_preview_can_be_turned_off(loaded):
     assert "spots crop window" not in viewer.layers
 
 
-def test_unreadable_per_track_sizes_are_reported_not_drawn(loaded):
-    fields, viewer = loaded
-    fields.track_ids.value = ["0"]
-    fields.window_overrides.value = "three:ten"
-
-    assert "spots crop window" not in viewer.layers
-    assert "integers" in fields.errors.value
-
-
 def test_model_has_a_window_for_each_selected_track(loaded):
     fields, _ = loaded
     fields.fields_enabled.value = True
-    fields.window_size.value = 10.0
-    fields.window_overrides.value = "3:30"
     fields.track_ids.value = ["0", "3"]
+    _window_boxes(fields)["Track 0"].value = 10.0
 
     crop = fields._make_model()
 
@@ -164,6 +194,15 @@ def test_model_has_a_window_for_each_selected_track(loaded):
     assert crop.window_for_track(0) == 10.0
     assert crop.window_for_track(3) == 30.0
     assert set(crop.roi_by_time) == {0, 3}
+
+
+def test_window_sizes_are_disabled_with_the_tab(loaded):
+    fields, _ = loaded
+    fields.track_ids.value = ["0"]
+    fields.fields_enabled.value = False
+    assert not fields.track_windows.enabled
+    fields.fields_enabled.value = True
+    assert fields.track_windows.enabled
 
 
 def test_model_needs_a_track_to_be_selected(loaded):
