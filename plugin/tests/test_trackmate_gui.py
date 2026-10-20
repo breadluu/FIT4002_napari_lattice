@@ -23,9 +23,8 @@ CSV = (
     "ID3,3,3,1.0,51.0,61.0,0.0,1.0,1,7.5\n"
 )
 
-HIDDEN_UNTIL_LOADED = [
-    "fields_enabled", "track_ids", "select_all", "deselect_all", "show_preview",
-]
+HIDDEN_UNTIL_ENABLED = ["track_ids", "select_all", "deselect_all", "show_preview"]
+HIDDEN_UNTIL_LOADED = ["fields_enabled", *HIDDEN_UNTIL_ENABLED]
 
 
 def _raise_errors(cls: MagicTemplate):
@@ -76,11 +75,35 @@ def test_only_the_file_picker_is_shown_before_loading(tab):
     assert _shown(fields.tracks_path)
 
 
-def test_track_options_are_revealed_after_loading(loaded):
+def test_only_the_enabled_box_is_revealed_after_loading(loaded):
     fields, _ = loaded
-    for name in HIDDEN_UNTIL_LOADED:
+    assert _shown(fields.fields_enabled)
+    for name in HIDDEN_UNTIL_ENABLED:
+        assert not _shown(fields[name]), name
+
+
+def test_track_options_are_revealed_when_enabled(loaded):
+    fields, _ = loaded
+    fields.fields_enabled.value = True
+    for name in HIDDEN_UNTIL_ENABLED:
         assert _shown(fields[name]), name
     assert list(fields.track_ids.choices) == ["0", "3"]
+
+
+def test_disabling_hides_the_track_options_and_deselects(loaded):
+    fields, viewer = loaded
+    fields.fields_enabled.value = True
+    fields.track_ids.value = ["0", "3"]
+
+    fields.fields_enabled.value = False
+    for name in HIDDEN_UNTIL_ENABLED:
+        assert not _shown(fields[name]), name
+    assert fields.track_ids.value == []
+    assert not _shown(fields.track_windows)
+    assert "spots crop window" not in viewer.layers
+
+    fields.fields_enabled.value = True
+    assert fields.track_ids.value == []
 
 
 def test_select_all_picks_every_track(loaded):
@@ -196,13 +219,20 @@ def test_model_has_a_window_for_each_selected_track(loaded):
     assert set(crop.roi_by_time) == {0, 3}
 
 
-def test_window_sizes_are_disabled_with_the_tab(loaded):
+def test_enabling_without_a_track_is_reported_as_invalid(loaded):
     fields, _ = loaded
-    fields.track_ids.value = ["0"]
-    fields.fields_enabled.value = False
-    assert not fields.track_windows.enabled
     fields.fields_enabled.value = True
-    assert fields.track_windows.enabled
+    assert "at least one track" in fields.errors.value
+
+    fields.track_ids.value = ["0"]
+    assert fields.errors.value == ""
+
+
+def test_disabled_tab_is_valid_without_a_track(loaded):
+    fields, _ = loaded
+    fields.fields_enabled.value = True
+    fields.fields_enabled.value = False
+    assert fields.errors.value == ""
 
 
 def test_model_needs_a_track_to_be_selected(loaded):

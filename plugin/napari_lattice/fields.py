@@ -901,11 +901,19 @@ class OutputFields(NapariFieldGroup):
 @magicclass
 class TrackmateFields(NapariFieldGroup):
     header = field(dedent("""
-        Load a TrackMate export to view its tracks. Once loaded, enable the tab to make the
-        run follow the selected tracks: at each timepoint the crop is a box centred on the
-        tracked object, instead of a fixed region. The yellow boxes on the canvas show how
-        large the crop window is, and update as you change the size.
+        Crop along tracks from a TrackMate export instead of a fixed region: at each
+        timepoint the crop is a box centred on the tracked object.
+
+        1. Choose a TrackMate tracks file and click Load TrackMate tracks.
+        2. Tick Enabled to show the track options.
+        3. Pick the tracks to crop in the Tracks list. Click selects one track,
+            Ctrl+click adds or removes a track, Shift+click selects a range,
+            and Select All picks every track. One crop is saved per track.
+        4. Set the crop window size of each selected track. The yellow boxes on
+            the canvas show each window and update as you change its size.
     """), widget_type="Label")
+    # Hidden until a file has been loaded, like the track settings below.
+    fields_enabled = field(False, label="Enabled")
     tracks_path = field(Path).with_options(
         label="TrackMate tracks file",
         tooltip="Path to a TrackMate 'tracks-only' XML export, or a 'spots in tracks statistics' CSV export"
@@ -936,8 +944,6 @@ class TrackmateFields(NapariFieldGroup):
         self._follow_viewer_time()
 
     # Everything from here on is hidden until a file has been loaded.
-    fields_enabled = field(False, label="Enabled")
-
     def _get_track_id_options(self, _) -> List[str]:
         tracks = getattr(self, "_tracks", None) or {}
         return sorted(tracks, key=int)
@@ -970,26 +976,28 @@ class TrackmateFields(NapariFieldGroup):
     # The size a track's window starts at when it is first selected.
     _DEFAULT_WINDOW = CropParams.get_default("trackmate_window_size_default")
 
-    # The widgets that stay hidden until a file has been loaded. The window sizes
-    # are not listed: they are shown whenever a track is selected.
-    _REVEALED_AFTER_LOAD = (
-        "fields_enabled", "track_ids", "select_all", "deselect_all", "show_preview",
-    )
+    # The widgets shown only once a file has been loaded and the tab is enabled. The
+    # window sizes are not listed: they are shown whenever a track is selected.
+    _SHOWN_WHEN_ENABLED = ("track_ids", "select_all", "deselect_all", "show_preview")
 
     def __post_init__(self):
         self._set_revealed(False)
         self._sync_track_windows()
+        # Hooks up validation, so the tab icon and errors follow the fields like the other tabs.
+        super().__post_init__()
 
     def _set_revealed(self, revealed: bool) -> None:
-        for name in self._REVEALED_AFTER_LOAD:
-            self[name].visible = revealed
+        """Shows the Enabled box once a file is loaded, and the track settings once it is ticked."""
+        self.fields_enabled.visible = revealed
+        for name in self._SHOWN_WHEN_ENABLED:
+            self[name].visible = revealed and self.fields_enabled.value
 
     @fields_enabled.connect
-    @enable_if([track_windows, track_ids])
-    def _enable_tracked_crop(self, enabled: bool) -> bool:
-        # Only the crop settings are gated: loading a file and browsing its tracks
-        # stays available whether or not the run is going to follow one.
-        return enabled
+    def _enable_tracked_crop(self, enabled: bool) -> None:
+        if not enabled:
+            # Start from no tracks the next time the tab is enabled.
+            self.track_ids.value = []
+        self._set_revealed(bool(getattr(self, "_tracks", None)))
 
     @track_ids.connect
     def _on_track_ids_changed(self):
