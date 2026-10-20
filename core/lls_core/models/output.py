@@ -1,9 +1,9 @@
+from pydantic.v1 import Field, DirectoryPath, validator
 from strenum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING
 from pandas import DataFrame
 from lls_core.models.utils import FieldAccessModel, enum_choices
-from pydantic import DirectoryPath, Field, ValidationInfo, field_validator
 
 if TYPE_CHECKING:
     pass
@@ -30,7 +30,7 @@ class OutputParams(FieldAccessModel):
     save_suffix: str = Field(
         default="_deskewed",
         description="The filename suffix that will be used for output files. This will be added as a suffix to the input file name if the input image was specified using a file name. If the input image was provided as an in-memory object, the `save_name` field should instead be specified.",
-        json_schema_extra={"cli_description": "The filename suffix that will be used for output files. This will be added as a suffix to the input file name if the --save-name flag was not specified."}
+        cli_description="The filename suffix that will be used for output files. This will be added as a suffix to the input file name if the --save-name flag was not specified."
     )
     save_name: str = Field(
         description="The filename that will be used for output files. This should not contain a leading directory or file extension. The final output files will have additional elements added to the end of this prefix to indicate the region of interest, channel, timepoint, file extension etc.",
@@ -43,16 +43,16 @@ class OutputParams(FieldAccessModel):
     time_range: range = Field(
         default=None,
         description="The range of times to process. This defaults to all time points in the image array.",
-        json_schema_extra={"cli_description": "The range of times to process, as an array with two items: the first and last time index. This defaults to all time points in the image array."}
+        cli_description="The range of times to process, as an array with two items: the first and last time index. This defaults to all time points in the image array."
     )
-    time_range_by_track: Optional[Dict[int, range]] = Field(
+    time_range_by_track: dict[int,range] = Field(
         default = None,
         description="The range of times to process for a track. This defaults to all time points in the image array."
     )
     channel_range: range = Field(
         default=None,
         description="The range of channels to process. This defaults to all time points in the image array.",
-        json_schema_extra={"cli_description": "The range of channels to process, as an array with two items: the first and last channel index. This defaults to all channels in the image array."}
+        cli_description="The range of channels to process, as an array with two items: the first and last channel index. This defaults to all channels in the image array."
     )
     process_parallel: int = Field(
         default=1,
@@ -87,19 +87,17 @@ class OutputParams(FieldAccessModel):
                     "for a smoother MIP."
     )
 
-    @field_validator("save_dir", mode="before")
-    @classmethod
+    @validator("save_dir", pre=True)
     def validate_save_dir(cls, v: Path):
         if isinstance(v, Path) and not v.is_absolute():
             # This stops the empty path being considered a valid directory
             raise ValueError("The save directory must be an absolute path that exists")
         return v
 
-    @field_validator("save_name")
-    @classmethod
-    def add_save_suffix(cls, v: str, info: ValidationInfo):
+    @validator("save_name")
+    def add_save_suffix(cls, v: str, values: dict):
         # This is the only place that the save suffix is used.
-        return v + info.data["save_suffix"]
+        return v + values["save_suffix"]
 
     @property
     def file_extension(self):

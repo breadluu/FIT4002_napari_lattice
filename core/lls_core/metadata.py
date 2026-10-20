@@ -41,7 +41,7 @@ ORIGIN_REFERENCE = (
 
 def _jsonable(value: Any) -> Any:
     """
-    Coerce a pydantic `.model_dump()` tree into something `json.dumps` accepts.
+    Coerce a pydantic `.dict()` tree into something `json.dumps` accepts.
 
     numpy scalars are the main hazard: the repo pins `numpy<2`, where `np.float32` and
     `np.int64` both raise from the stdlib encoder rather than degrading.
@@ -79,7 +79,7 @@ def build_config(lattice: "LatticeData") -> dict:
     serialised back to the config that produced them, so the source path is recorded
     instead - or `null` where the input was supplied in memory.
     """
-    config = lattice.model_dump(exclude={"input_image", "input_image_path", "derived", "workflow_path"})
+    config = lattice.dict(exclude={"input_image", "input_image_path", "derived", "workflow_path"})
 
     config["input_image"] = str(lattice.input_image_path) if lattice.input_image_path else None
     if lattice.workflow is not None:

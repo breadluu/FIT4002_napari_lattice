@@ -246,7 +246,7 @@ def test_custom_workflow_is_handed_over_as_a_path(tmp_path):
     workflow_path.write_text("""!!python/object:napari_workflows._workflow.Workflow
 _tasks:
   blurred: !!python/tuple
-  - !!python/name:pyclesperanto.gaussian_blur ''
+  - !!python/name:pyclesperanto_prototype.gaussian_blur ''
   - deskewed_image
   - null
   - 1
