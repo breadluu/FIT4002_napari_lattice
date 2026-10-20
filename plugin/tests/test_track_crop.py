@@ -60,16 +60,16 @@ def tracks_file(tmp_path):
     return path
 
 
-def fake_trackmate(path=None, enabled=True, selected=("0",), sizes=None):
+def fake_trackmate(path=None, enabled=True, selected=("0",), window=4.0, overrides=""):
     fake = SimpleNamespace(
         fields_enabled=SimpleNamespace(value=enabled),
+        window_size=SimpleNamespace(value=window),
+        window_overrides=SimpleNamespace(value=overrides),
         tracks_path=SimpleNamespace(value=path),
         track_ids=SimpleNamespace(value=list(selected)),
         _tracks=load_trackmate_tracks(path) if path else {},
-        _track_window_sizes=dict(sizes or {}),
-        _DEFAULT_WINDOW=TrackmateFields._DEFAULT_WINDOW,
     )
-    for name in ("_get_selected_track_ids", "_window_sizes", "_get_track_window_sizes"):
+    for name in ("_get_selected_track_ids", "_get_window_overrides"):
         setattr(fake, name, MethodType(getattr(TrackmateFields, name), fake))
     return fake
 
@@ -89,7 +89,7 @@ def test_no_track_selected_is_rejected(tracks_file):
 
 
 def test_builds_micron_crop_from_selected_track(tracks_file):
-    crop = TrackmateFields._make_model(fake_trackmate(tracks_file, sizes={"0": 4.0}))
+    crop = TrackmateFields._make_model(fake_trackmate(tracks_file, window=4.0))
     assert isinstance(crop, CropParams)
     assert crop.roi_units == RoiUnits.Microns
     # Only the selected track is cropped along, not every track in the file.
@@ -108,7 +108,7 @@ def test_builds_a_crop_for_every_selected_track(tracks_file):
 
 
 def test_each_track_can_have_its_own_window_size(tracks_file):
-    fake = fake_trackmate(tracks_file, selected=("0", "1"), sizes={"0": 4.0, "1": 10.0})
+    fake = fake_trackmate(tracks_file, selected=("0", "1"), window=4.0, overrides="1:10")
     crop = TrackmateFields._make_model(fake)
 
     def size(roi):
@@ -119,13 +119,9 @@ def test_each_track_can_have_its_own_window_size(tracks_file):
     assert size(crop.roi_by_time[1][0]) == 10.0
 
 
-def test_sizes_for_unselected_tracks_are_ignored(tracks_file):
+def test_overrides_for_unselected_tracks_are_ignored(tracks_file):
     crop = TrackmateFields._make_model(
-        fake_trackmate(tracks_file, selected=("0",), sizes={"0": 4.0, "1": 10.0})
+        fake_trackmate(tracks_file, selected=("0",), overrides="1:10")
     )
-    assert crop.trackmate_window_size == {"0": 4.0}
-
-
-def test_a_track_without_a_size_uses_the_default(tracks_file):
-    crop = TrackmateFields._make_model(fake_trackmate(tracks_file, selected=("0",)))
-    assert crop.window_for_track(0) == 30.0
+    assert crop.window_for_track(0) == 4.0
+    assert not crop.trackmate_window_size

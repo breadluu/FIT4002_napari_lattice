@@ -237,7 +237,7 @@ def is_trackmate_file(path: PathLike) -> bool:
     suffix = path.suffix.lower()
     if suffix == ".xml":
         if not path.is_file():
-            return False
+            raise FileNotFoundError(f"TrackMate file not found: {path}")
         try:
             tree = ET.parse(path)
         except ET.ParseError as exc:
@@ -245,7 +245,7 @@ def is_trackmate_file(path: PathLike) -> bool:
         return is_trackmate_file_xml(tree)
     if suffix == ".csv":
         if not path.is_file():
-            return False
+            raise FileNotFoundError(f"TrackMate file not found: {path}")
         with open(path, newline="") as file:
             return is_trackmate_file_csv(file)
     return False
