@@ -3,8 +3,6 @@ Functions related to manipulating Napari Workflows
 """
 from __future__ import annotations
 
-import sys
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator, Iterable, Iterator, Tuple, TypeVar, Union
 
@@ -179,61 +177,10 @@ def _import_workflow_modules(workflow: Path) -> None:
     else:
         logger.info(f"{counter} custom modules imported")
 
-LEGACY_CLE_MODULE = "pyclesperanto_prototype"
-
-
-@contextmanager
-def _legacy_pyclesperanto_alias() -> Iterator[None]:
-    """
-    Workflow files saved before the move to `pyclesperanto` name their functions as
-    `pyclesperanto_prototype.<name>`, and napari-workflows loads them by importing that
-    module. napari-lattice no longer depends on it, so on a clean install those files
-    would fail to load. While a workflow is being read, resolve the old module name to
-    `pyclesperanto`. This is scoped to the load, so it never leaks into the process, and
-    it means a given file loads the same functions whether or not the old package
-    happens to be installed.
-    """
-    import pyclesperanto
-
-    previous = sys.modules.get(LEGACY_CLE_MODULE, _MISSING)
-    sys.modules[LEGACY_CLE_MODULE] = pyclesperanto
-    try:
-        yield
-    finally:
-        if previous is _MISSING:
-            sys.modules.pop(LEGACY_CLE_MODULE, None)
-        else:
-            sys.modules[LEGACY_CLE_MODULE] = previous  # type: ignore[assignment]
-
-
-_MISSING = object()
-
-
 def workflow_from_path(workflow: Path) -> Workflow:
     """
-    Imports the dependency modules for a workflow, and loads it from disk.
-
-    Functions referenced as `pyclesperanto_prototype.<name>` (written by older versions)
-    are resolved against `pyclesperanto`.
+    Imports the dependency modules for a workflow, and loads it from disk
     """
     from napari_workflows._io_yaml_v1 import load_workflow
-    from yaml.constructor import ConstructorError
     _import_workflow_modules(workflow)
-    try:
-        with _legacy_pyclesperanto_alias():
-            return load_workflow(str(workflow))
-    except ConstructorError as e:
-        # PyYAML reports the module's real name (`pyclesperanto`), not the alias, so look
-        # at what the file itself asked for.
-        try:
-            uses_legacy_name = LEGACY_CLE_MODULE in Path(workflow).read_text(errors="ignore")
-        except OSError:
-            uses_legacy_name = False
-        if not uses_legacy_name:
-            raise
-        raise ValueError(
-            f"The workflow '{workflow.name}' uses a function from `{LEGACY_CLE_MODULE}`, which "
-            "napari-lattice has replaced with `pyclesperanto`. Such names are looked up in "
-            "`pyclesperanto` instead, but this one has no equivalent under the same name. Edit "
-            f"the workflow file to use the matching `pyclesperanto` function. Details: {e}"
-        ) from e
+    return load_workflow(str(workflow))
