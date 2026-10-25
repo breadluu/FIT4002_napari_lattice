@@ -41,9 +41,9 @@ jobs:
       # package versions, so CI was not testing what users actually install.
       - uses: conda-incubator/setup-miniconda@v4
         with:
-          miniforge-version: latest
+          miniforge-version: 26.7.2-1
           conda-remove-defaults: "true"
-          auto-update-conda: true
+          auto-update-conda: false
           activate-environment: test
           python-version: ${{ matrix.python-version }}
           channels: conda-forge
