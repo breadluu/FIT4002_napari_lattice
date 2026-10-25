@@ -3,6 +3,7 @@
 ::: mkdocs-click
     :module: lls_core.cmds.__main__
     :command: click_app
+    :prog_name: lls-pipeline
 
 ## ROI files and units (`--roi-list`, `--roi-units`)
 
