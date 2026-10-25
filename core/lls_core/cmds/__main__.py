@@ -9,6 +9,7 @@ from enum import auto
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from strenum import StrEnum
+import traceback
 
 from lls_core.models.lattice_data import LatticeData
 from lls_core.models.deskew import DeskewParams, DefinedPixelSizes
@@ -45,6 +46,7 @@ CLI_PARAM_MAP = {
     "roi_units": ["crop", "roi_units"],
     "roi_subset": ["crop", "roi_subset"],
     "z_range": ["crop", "z_range"],
+    "track_crop_size": ["crop","trackmate_window_size"], 
     "decon_processing": ["deconvolution", "decon_processing"],
     "psf": ["deconvolution", "psf"],
     "decon_num_iter": ["deconvolution", "decon_num_iter"],
@@ -114,6 +116,43 @@ def parse_roi_subset(value: Optional[List[str]]) -> Optional[List[int]]:
                 raise BadParameter(f"ROI subset indices must be integers; got {piece!r}")
     return result
 
+def parse_window_size(value: Optional[list[Optional[str]]]) -> Optional[Tuple[Optional[float],Optional[dict[str,float]]]]:
+    """
+    Typer callback  normalises ``--trackmate-window-size`` into a tuple in form (default window size, dict[track_id,window size]). Accepts repeated flags (``--trackmate-window-size 45 --trackmate-window-size 5:30``) and/or a
+    comma-separated list (``--trackmate-window-size 45,1:30,2:40`), with surrounding whitespace
+    tolerated. A non-integer piece fails fast as a CLI usage error.
+    """
+    if not value:
+        return (None,None)
+    result_dict: dict[str,float] = {}
+    result_default: float = None
+    for item in value:
+        for piece in str(item).split(","):
+            piece = piece.strip()
+            if not piece:
+                continue
+            piece = piece.split(":") 
+            if len(piece) > 2:
+                raise BadParameter(f"recieved {len(piece)} inputs for a tracks window size, expected at most 2")
+            elif len(piece) == 2:
+                try:
+                    track = str(int(piece[0]))
+                except ValueError:
+                    raise BadParameter(f"Track indices must be integers; got {piece[0]!r}")
+                try:
+                    size = float(piece[1])
+                except ValueError:
+                    raise BadParameter(f"Track indices must be floats; got {piece[1]!r}")
+                result_dict[track] = size
+            elif len(piece) == 1:
+                if result_default:
+                    raise BadParameter("only a single default track window size can be used")
+                result_default = float(piece[0])
+            else:
+                raise BadParameter("invalid track window size input")
+    return (result_default,result_dict)
+
+
 def handle_merge(values: list):
     if len(values) > 1:
         if all(isinstance(param, dict) for param in values):
@@ -132,11 +171,13 @@ def rich_validation(e: ValidationError) -> Table:
     table.add_column("Parameter")
     # table.add_column("Command Line Argument")
     table.add_column("Error")
+    table.add_column("type")
 
     for error in e.errors():
         table.add_row(
             str(error["loc"][0]),
             str(error["msg"]),
+            str(error["type"])
         )
 
     return table
@@ -188,13 +229,15 @@ def process(
         DefinedPixelSizes.get_default("X")
     )),
 
-    roi_list: List[Path] = field_from_model(CropParams, "roi_list"),
+    roi_list: List[Path] = field_from_model(CropParams, "roi_list",description="Either a list of regions of interest, each a file path to an ImageJ ROI (.roi/.zip) or napari shapes (.csv) file, or a singular trackmate tracking file, either a (.xml) or (.csv) file.",),
     roi_units: RoiUnits = field_from_model(
         CropParams, "roi_units",
         click_type=RoiUnitsChoice([unit.value for unit in RoiUnits], case_sensitive=False),
     ),
     roi_subset: List[str] = field_from_model(CropParams, "roi_subset", extra_description="Accepts either repeated flags (--roi-subset 2 --roi-subset 5) or a comma-separated list (--roi-subset 2,5,7).", default=[], callback=parse_roi_subset),
     z_range: Optional[Tuple[int,int]] = field_from_model(CropParams, "z_range", show_default=False),
+    
+    track_crop_size: Optional[List[str]]  = field_from_model(CropParams,"trackmate_window_size",extra_description="Accepts either repeated flags (--trackmate-window-size 40 --trackmate-window-size 5:35) or a comma-separated list (--trackmate-window-size 30,5:35,7:40). accepts one default value give as a single float in microns (if no default provided any track without a specific size provided will be 30 microns). further sizes for individual tracks can be specified with the form track_number:window_size.",default=None,callback=parse_window_size),
     
     enable_deconvolution: bool = Option(False, "--deconvolution/--disable-deconvolution", rich_help_panel="Deconvolution"),
     decon_processing: DeconvolutionChoice = field_from_model(DeconvolutionParams, "decon_processing", rich_help_panel="Deconvolution"),
@@ -263,18 +306,18 @@ def process(
         with yaml_config.open() as fp:
             from yaml import safe_load
             yaml_args = safe_load(fp)
-
     # Merge all three sources of config: YAML, JSON and CLI
     merged = merge_with(handle_merge, [yaml_args, json_args, cli_args])
     # On the CLI, default to 'auto' (0) worker selection when the user set no value
     # anywhere. The model default stays 1 (serial) so GUI/library callers are
     # unaffected; only an unconfigured CLI run opts into auto.
     merged.setdefault("process_parallel", 0)
-
+    
     try:
         lattice = LatticeData.parse_obj(merged)
     except ValidationError as e:
         console.print(rich_validation(e))
+        traceback.print_exc()
         raise Exit(code=1)
 
     # `estimate` and `process` are the same underlying command registered under
