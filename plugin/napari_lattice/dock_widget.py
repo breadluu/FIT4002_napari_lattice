@@ -31,7 +31,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
 @magicclass(widget_type="split")
 class LLSZWidget(MagicTemplate):
     def __post_init__(self):
@@ -81,7 +80,7 @@ class LLSZWidget(MagicTemplate):
         deskew_args = self.LlszMenu.WidgetContainer.deskew_fields._get_kwargs()
         output_args = self.LlszMenu.WidgetContainer.output_fields._make_model(validate=False)
         params = LatticeData.make(
-            validate=validate,
+            validate=validate, 
 
             # Deskew
             input_image=deskew_args["data"],
@@ -114,14 +113,14 @@ class LLSZWidget(MagicTemplate):
         main_heading = field("<h3>Napari Lattice: Visualization & Analysis</h3>", widget_type="Label")
         heading1 = field(dedent("""
         <div>
-        Specify deskewing parameters and image layers in Tab 1.&nbsp;
+        Specify deskewing parameters and image layers in Tab 1.&nbsp; 
         Additional analysis parameters can be configured in the other tabs.&nbsp;
         When you are ready to save,&nbsp;go to Tab 6.&nbsp;
         Output to specify the output directory.&nbsp;
         For more information,&nbsp;<a href="https://bioimageanalysiscorewehi.github.io/napari_lattice/">please refer to the documentation here</a>.
         </div>
         """.strip()), widget_type="Label")
-
+        
         def __post_init__(self):
             from qtpy.QtCore import Qt
             from qtpy.QtWidgets import QLabel, QLayout
@@ -131,8 +130,8 @@ class LLSZWidget(MagicTemplate):
 
             if isinstance(self.heading1.native, QLabel):
                 self.heading1.native.setWordWrap(True)
-
-            # Set minimum width for the entire widget to allow resizing
+            
+            # Set minimum width for the entire widget to allow resizing 
             if isinstance(self._widget._qwidget, QWidget):
                 self._widget._qwidget.setMinimumWidth(450)
                 #450 pixels ensures enough space for plugin content
