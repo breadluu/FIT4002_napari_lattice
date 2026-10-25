@@ -513,15 +513,14 @@ class LatticeData(OutputParams, DeskewParams):
                     ) 
 
     @property
-    def n_slices(self,roi_index) -> int:
+    def n_slices(self) -> int:
         """
         Returns the number of slices that will be returned by the `iter_*` methods.
+        A track-driven crop has its own time range per track, so those are summed.
         """
         if self.time_range_by_track:
-            t_range = self.time_range_by_track[roi_index]
-        else:
-            t_range = self.time_range
-        return len(t_range) * len(self.channel_range)
+            return sum(len(t_range) for t_range in self.time_range_by_track.values()) * len(self.channel_range)
+        return len(self.time_range) * len(self.channel_range)
 
     def iter_sublattices(self, update_with: dict = {}) -> Iterable[ProcessedSlice[LatticeData]]:
         """

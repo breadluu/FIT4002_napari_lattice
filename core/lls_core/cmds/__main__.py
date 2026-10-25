@@ -9,7 +9,6 @@ from enum import auto
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from strenum import StrEnum
-import traceback
 
 from lls_core.models.lattice_data import LatticeData
 from lls_core.models.deskew import DeskewParams, DefinedPixelSizes
@@ -171,13 +170,11 @@ def rich_validation(e: ValidationError) -> Table:
     table.add_column("Parameter")
     # table.add_column("Command Line Argument")
     table.add_column("Error")
-    table.add_column("type")
 
     for error in e.errors():
         table.add_row(
             str(error["loc"][0]),
             str(error["msg"]),
-            str(error["type"])
         )
 
     return table
@@ -306,18 +303,18 @@ def process(
         with yaml_config.open() as fp:
             from yaml import safe_load
             yaml_args = safe_load(fp)
+
     # Merge all three sources of config: YAML, JSON and CLI
     merged = merge_with(handle_merge, [yaml_args, json_args, cli_args])
     # On the CLI, default to 'auto' (0) worker selection when the user set no value
     # anywhere. The model default stays 1 (serial) so GUI/library callers are
     # unaffected; only an unconfigured CLI run opts into auto.
     merged.setdefault("process_parallel", 0)
-    
+
     try:
         lattice = LatticeData.parse_obj(merged)
     except ValidationError as e:
         console.print(rich_validation(e))
-        traceback.print_exc()
         raise Exit(code=1)
 
     # `estimate` and `process` are the same underlying command registered under

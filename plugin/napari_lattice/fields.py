@@ -415,8 +415,8 @@ class DeskewFields(NapariFieldGroup):
 
     @img_layer.connect
     @enable_if([stack_along])
-    def _hide_stock_along(self, img_layer: List[Image]):
-        # Hide the "Stock Along" option if we only have one image
+    def _hide_stack_along(self, img_layer: List[Image]):
+        # Hide the "Stack Along" option if we only have one image
         return len(img_layer) > 1
 
     @coverslip_rotation.connect

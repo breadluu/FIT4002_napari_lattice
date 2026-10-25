@@ -194,10 +194,10 @@ def write_sidecar(
     roi = None
     if cropped:
         if not lattice.crop.roi_by_time:
-            corners = _roi_to_shape_array(lattice.crop.roi_list[roi_index])
+            corners = _roi_to_shape_array(lattice.crop.roi_list[index])
         else:
             #since tracking roi shape is constant with t only need to consider the first time point
-            corners = _roi_to_shape_array(list(lattice.crop.roi_by_time[roi_index].values())[0])
+            corners = _roi_to_shape_array(list(lattice.crop.roi_by_time[index].values())[0])
         ys, xs = corners[:, 0], corners[:, 1]
         roi = {
             "index": index,
