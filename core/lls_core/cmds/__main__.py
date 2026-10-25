@@ -117,8 +117,8 @@ def parse_roi_subset(value: Optional[List[str]]) -> Optional[List[int]]:
 
 def parse_window_size(value: Optional[list[Optional[str]]]) -> Optional[Tuple[Optional[float],Optional[dict[str,float]]]]:
     """
-    Typer callback  normalises ``--trackmate-window-size`` into a tuple in form (default window size, dict[track_id,window size]). Accepts repeated flags (``--trackmate-window-size 45 --trackmate-window-size 5:30``) and/or a
-    comma-separated list (``--trackmate-window-size 45,1:30,2:40`), with surrounding whitespace
+    Typer callback  normalises ``--track-crop-size`` into a tuple in form (default window size, dict[track_id,window size]). Accepts repeated flags (``--track-crop-size 45 --track-crop-size 5:30``) and/or a
+    comma-separated list (``--track-crop-size 45,1:30,2:40`), with surrounding whitespace
     tolerated. A non-integer piece fails fast as a CLI usage error.
     """
     if not value:
@@ -234,7 +234,7 @@ def process(
     roi_subset: List[str] = field_from_model(CropParams, "roi_subset", extra_description="Accepts either repeated flags (--roi-subset 2 --roi-subset 5) or a comma-separated list (--roi-subset 2,5,7).", default=[], callback=parse_roi_subset),
     z_range: Optional[Tuple[int,int]] = field_from_model(CropParams, "z_range", show_default=False),
     
-    track_crop_size: Optional[List[str]]  = field_from_model(CropParams,"trackmate_window_size",extra_description="Accepts either repeated flags (--trackmate-window-size 40 --trackmate-window-size 5:35) or a comma-separated list (--trackmate-window-size 30,5:35,7:40). accepts one default value give as a single float in microns (if no default provided any track without a specific size provided will be 30 microns). further sizes for individual tracks can be specified with the form track_number:window_size.",default=None,callback=parse_window_size),
+    track_crop_size: Optional[List[str]]  = field_from_model(CropParams,"trackmate_window_size",extra_description="Accepts either repeated flags (--track-crop-size 40 --track-crop-size 5:35) or a comma-separated list (--track-crop-size 30,5:35,7:40). accepts one default value give as a single float in microns (if no default provided any track without a specific size provided will be 30 microns). further sizes for individual tracks can be specified with the form track_number:window_size.",default=None,callback=parse_window_size),
     
     enable_deconvolution: bool = Option(False, "--deconvolution/--disable-deconvolution", rich_help_panel="Deconvolution"),
     decon_processing: DeconvolutionChoice = field_from_model(DeconvolutionParams, "decon_processing", rich_help_panel="Deconvolution"),
