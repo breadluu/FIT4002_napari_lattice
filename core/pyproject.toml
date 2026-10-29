@@ -62,7 +62,8 @@ dependencies = [
     "numpy<2",
     "packaging",
     "pandas",
-    "pyclesperanto",
+    # 0.25 bundles its own OpenCL loader DLL and its backend fails to load on the Windows CI runner
+    "pyclesperanto>=0.22,<0.25",
     "transforms3d",
     # Imported directly in lls_core.czi_reader for fast CZI reads. Same library
     # bioio-czi uses by default, so output matches bioio (also pulled in by it).

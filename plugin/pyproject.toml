@@ -68,7 +68,8 @@ dependencies = [
     "ome-types<0.6.0",  #pydantic v1 support removed from 0.6 onwards
     "numpy<2",
     "psutil",
-    "pyclesperanto",
+    # 0.25 bundles its own OpenCL loader DLL and its backend fails to load on the Windows CI runner
+    "pyclesperanto>=0.22,<0.25",
     "pydantic",
     "qtpy",
     "typing_extensions>=4.7.0",

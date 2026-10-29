@@ -46,6 +46,20 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def gpu_device_names() -> List[str]:
+    """
+    Names of the GPUs pyclesperanto can use, or an empty list if it has no working
+    backend. This runs when the module is imported, so without the guard a machine
+    with no usable OpenCL backend could not open the plugin at all, not even to use
+    the CPU engine.
+    """
+    try:
+        return list(cle.available_device_names())
+    except Exception as e:
+        logger.warning(f"No GPU devices available from pyclesperanto: {e}")
+        return []
+
+
 def adjust_maximum(widget: "RangedWidget", max: int):
     """
     Updates the maximum value
@@ -345,7 +359,7 @@ class DeskewFields(NapariFieldGroup):
     )
 
     # --- Processing / preview ---
-    device = field(str).with_choices(cle.available_device_names()).with_options(
+    device = field(str).with_choices(gpu_device_names()).with_options(
         label="Graphics Device",
         tooltip="The GPU that will be used to perform the processing"
     )
