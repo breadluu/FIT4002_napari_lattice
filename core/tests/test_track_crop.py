@@ -12,7 +12,7 @@ import logging
 
 import numpy as np
 import pytest
-from pydantic.v1 import ValidationError
+from pydantic import ValidationError
 from xarray import DataArray
 
 from lls_core.cropping import (
@@ -207,7 +207,7 @@ def test_crop_params_json_round_trip_keeps_int_timepoints():
     # JSON object keys are strings; they must come back as int timepoints.
     by_time = track_to_rois(_track([2, 10.0, 10.0, 0.0], [3, 11.0, 11.0, 0.0]), 10.0)
     crop = CropParams(roi_by_time={0: by_time}, roi_list=[_PLACEHOLDER_ROI], roi_subset=[0], roi_units=RoiUnits.Microns)
-    again = CropParams.parse_raw(crop.json())
+    again = CropParams.model_validate_json(crop.model_dump_json())
 
     assert set(again.roi_by_time[0]) == {2, 3}
     assert again.roi_for_time(3, 0) == crop.roi_for_time(3, 0)
@@ -259,7 +259,7 @@ def test_lattice_conversion_does_not_repeat_on_revalidation(tmp_path):
     converted = dict(lattice.crop.roi_by_time)
 
     # parse_obj re-runs every validator; .copy() would not, so it proves nothing.
-    assert LatticeData.parse_obj(dict(lattice)).crop.roi_by_time == converted
+    assert LatticeData.model_validate(dict(lattice)).crop.roi_by_time == converted
 
 
 def test_lattice_clamps_a_track_roi_that_starts_off_the_image(tmp_path):
