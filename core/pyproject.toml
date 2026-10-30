@@ -116,6 +116,9 @@ docs = [
     "mkdocs-material",
     "mkdocs-video",
     "mkdocs-jupyter",
+    # The docs build runs on Python 3.10, where mkdocstrings stops at 1.0.6, and
+    # that version crashes with pymdown-extensions 12 (Highlight needs an `md` argument)
+    "pymdown-extensions<12",
     # Includes fixes for Pydantic 1.X
     "fieldz>=0.1.0",
     "griffe-fieldz"
@@ -175,6 +178,7 @@ ignore_unused = [
     "mkdocs-video",
     "mkdocs-material",
     "mkdocs-jupyter",
+    "pymdown-extensions",
     "fieldz",
     "griffe-fieldz",
 
