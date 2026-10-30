@@ -246,7 +246,7 @@ def test_custom_workflow_is_handed_over_as_a_path(tmp_path):
     workflow_path.write_text("""!!python/object:napari_workflows._workflow.Workflow
 _tasks:
   blurred: !!python/tuple
-  - !!python/name:pyclesperanto_prototype.gaussian_blur ''
+  - !!python/name:pyclesperanto.gaussian_blur ''
   - deskewed_image
   - null
   - 1
@@ -262,3 +262,25 @@ _tasks:
     fields.workflow_path.value = workflow_path
 
     assert fields._make_model() == workflow_path
+
+
+@pytest.mark.parametrize("ticked, locked", [
+    ("cropping_fields", "trackmate_fields"),
+    ("trackmate_fields", "cropping_fields"),
+])
+def test_only_one_crop_tab_can_be_enabled(ticked: str, locked: str):
+    """
+    Only one crop can apply to a run, so ticking Enabled in one crop tab greys out
+    the other tab's box until it is unticked again.
+    """
+    ui = LLSZWidget()
+    container = ui.LlszMenu.WidgetContainer
+    ticked_box = getattr(container, ticked).fields_enabled
+    locked_box = getattr(container, locked).fields_enabled
+    assert locked_box.enabled
+
+    ticked_box.value = True
+    assert not locked_box.enabled
+
+    ticked_box.value = False
+    assert locked_box.enabled

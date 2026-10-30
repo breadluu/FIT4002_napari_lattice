@@ -114,12 +114,12 @@ class LatticeData(OutputParams, DeskewParams):
     workflow: Optional[Workflow] = Field(
         default=None,
         description="If defined, this is a workflow to add lightsheet processing onto",
-        cli_description="Path to a JSON file specifying a napari_workflow-compatible workflow to add lightsheet processing onto"
+        json_schema_extra={"cli_description": "Path to a JSON file specifying a napari_workflow-compatible workflow to add lightsheet processing onto"}
     )
 
     workflow_path: Optional[Path] = Field(
         default=None,
-        cli_hide=True,
+        json_schema_extra={"cli_hide": True},
         description="Internal: the filesystem path the workflow was loaded from, if any. "
                     "A `Workflow` object cannot be serialised back to a path, so output "
                     "metadata records this instead. Mirrors `input_image_path`; "
@@ -139,13 +139,13 @@ class LatticeData(OutputParams, DeskewParams):
     time_range: range = Field(
         default=None,
         description="The range of times to process. This defaults to all time points in the image array.",
-        cli_description="The range of times to process, as an array with two items: the first and last time index. This defaults to all time points in the image array.",
+        json_schema_extra={"cli_description": "The range of times to process, as an array with two items: the first and last time index. This defaults to all time points in the image array."},
         validate_default=True
     )
     channel_range: range = Field(
         default=None,
         description="The range of channels to process. This defaults to all time points in the image array.",
-        cli_description="The range of channels to process, as an array with two items: the first and last channel index. This defaults to all channels in the image array.",
+        json_schema_extra={"cli_description": "The range of channels to process, as an array with two items: the first and last channel index. This defaults to all channels in the image array."},
         validate_default=True
     )
 
@@ -258,14 +258,42 @@ class LatticeData(OutputParams, DeskewParams):
         from lls_core.cropping import RoiUnits, scale_rois
         from lls_core.models.utils import ignore_keyerror
         values = info.data
-
         if v is None or v.roi_units == RoiUnits.Pixels:
             return v
         with ignore_keyerror():
             # dy for both axes, matching the plugin's own shape-to-ROI conversion.
-            v.roi_list = scale_rois(v.roi_list, 1 / values["physical_pixel_sizes"].Y)
+            factor = 1 / values["physical_pixel_sizes"].Y
+            v.trackmate_window_size_default = v.trackmate_window_size_default*factor
+            if v.trackmate_window_size:
+                for key,item in v.trackmate_window_size.items():
+                    v.trackmate_window_size[key] = item*factor
+            v.roi_list = scale_rois(v.roi_list, factor)
+            if v.roi_by_time is not None:
+                for id,roi  in v.roi_by_time.items():
+                    times = list(roi)
+                    scaled = scale_rois([roi[time] for time in times], factor)
+                    v.roi_by_time[id] = dict(zip(times, scaled))
             # Mark the conversion done, so re-validating a copy cannot repeat it.
             v.roi_units = RoiUnits.Pixels
+        return v
+
+
+    @field_validator("crop")
+    @classmethod
+    def keep_track_rois_in_frame(cls, v: Optional[CropParams], info: ValidationInfo) -> Optional[CropParams]:
+        """
+        Keeps an ROI crop window from drifting outside the deskewed image.
+        """
+        from lls_core.cropping import clamp_rois_to_image
+        from lls_core.models.utils import ignore_keyerror
+        values = info.data
+
+        if v is None or v.roi_by_time is None:
+            return v
+        with ignore_keyerror():
+            height, width = values["derived"].deskew_vol_shape[1:]
+            for id,roi in v.roi_by_time.items():
+                v.roi_by_time[id] = clamp_rois_to_image(roi, height, width)
         return v
 
     @field_validator("crop")
@@ -283,8 +311,14 @@ class LatticeData(OutputParams, DeskewParams):
             return v
         with ignore_keyerror():
             height, width = values["derived"].deskew_vol_shape[1:]
-            worst_y = max(y for roi in v.roi_list for y, _ in roi)
-            worst_x = max(x for roi in v.roi_list for _, x in roi)
+            # An ROI's crop window can wander off the image at some timepoints but not
+            # others, so every timepoint's crop window has to be considered, not just `roi_list`.
+            rois = list(v.roi_list) 
+            if v.roi_by_time:
+                for roi in v.roi_by_time.values():
+                    rois = rois + list((roi or {}).values())
+            worst_y = max(y for roi in rois for y, _ in roi)
+            worst_x = max(x for roi in rois for _, x in roi)
             if worst_y > height or worst_x > width:
                 logger.warning(
                     "ROIs extend to (%.0f, %.0f) but the deskewed image is only "
@@ -414,6 +448,50 @@ class LatticeData(OutputParams, DeskewParams):
             raise ValueError("The output time range must be a subset of the total available time points")
         return v
 
+    @model_validator(mode="after")
+    def restrict_time_range_to_track(self) -> "LatticeData":
+        """
+        Confine the run to the timepoints a track-driven crop covers, as those are the
+        only ones it has a rectangle for. A narrower range asked for by the user is
+        kept. A range that misses the track, or a track with holes in it, is reported
+        here rather than part-way through a long run.
+        """
+        crop = self.crop
+        if crop is None:
+            return self
+
+        by_track: dict[int, range] = {}
+        # validate_assignment is on, so assigning through setattr would re-run the
+        # validators (and recurse into this one). The value is built here from
+        # already-validated fields, so write it to the instance directly.
+        self.__dict__["time_range_by_track"] = by_track
+
+        time_range = self.time_range
+        if crop.roi_by_time is None or time_range is None:
+            return self
+
+        for id in crop.roi_subset:
+            roi = crop.roi_by_time[id]
+            covered = range(min(roi), max(roi) + 1)
+            start = max(time_range.start, covered.start)
+            stop = min(time_range.stop, covered.stop)
+            if start >= stop:
+                raise ValueError(
+                    f"The time range {time_range.start}-{time_range.stop - 1} does not overlap "
+                    f"the track, which covers timepoints {covered.start}-{covered.stop - 1}"
+                )
+
+            missing = [time for time in range(start, stop) if time not in roi]
+            if missing:
+                raise ValueError(
+                    f"The track has no position at timepoints {missing}, so there is nothing to "
+                    "centre the crop on there. Close the gaps in the track, or ask for a time "
+                    "range that avoids them."
+                )
+
+            by_track[id] = range(start, stop)
+        return self
+
     @field_validator("deconvolution")
     @classmethod
     def check_psfs(cls, v: Optional[DeconvolutionParams], info: ValidationInfo):
@@ -469,9 +547,12 @@ class LatticeData(OutputParams, DeskewParams):
         """
         from lls_core.models.results import ProcessedSlice
         from tqdm import tqdm
-
         for roi_index in self.iter_roi_indices():
-            for time_idx, time in tqdm(enumerate(self.time_range), desc="Timepoints", total=len(self.time_range), disable=not self.progress_bar, leave=not self.cropping_enabled, position=1 if self.cropping_enabled else 0):
+            if self.time_range_by_track:
+                t_range = self.time_range_by_track[roi_index]
+            else:
+                t_range = self.time_range
+            for time_idx, time in tqdm(enumerate(t_range), desc="Timepoints", total=len(t_range), disable=not self.progress_bar, leave=not self.cropping_enabled, position=1 if self.cropping_enabled else 0):
                 for ch_idx, ch in tqdm(enumerate(self.channel_range), desc="Channels", total=len(self.channel_range), leave=False, disable=not self.progress_bar, position=2 if self.cropping_enabled else 1):
                     yield ProcessedSlice(
                         data=self.slice_data(time=time, channel=ch),
@@ -483,11 +564,15 @@ class LatticeData(OutputParams, DeskewParams):
                     ) 
 
     @property
-    def n_slices(self) -> int:
+    def n_slices(self,roi_index) -> int:
         """
         Returns the number of slices that will be returned by the `iter_*` methods.
         """
-        return len(self.time_range) * len(self.channel_range)
+        if self.time_range_by_track:
+            t_range = self.time_range_by_track[roi_index]
+        else:
+            t_range = self.time_range
+        return len(t_range) * len(self.channel_range)
 
     def iter_sublattices(self, update_with: dict = {}) -> Iterable[ProcessedSlice[LatticeData]]:
         """
@@ -576,12 +661,14 @@ class LatticeData(OutputParams, DeskewParams):
         """
         Yields processed image slices with cropping enabled
         """
+        from lls_core.cropping import clamp_roi_to_image
         if self.crop is None:
             raise Exception("This function can only be called when crop is set")
-        
         for slice in self.iter_slices():
             roi_index = cast(int, slice.roi_index)
-            roi = self.crop.roi_list[roi_index]
+            roi = self.crop.roi_for_time(slice.time, roi_index)
+            height, width = self.derived.deskew_vol_shape[1:]
+            roi = clamp_roi_to_image(roi, height, width)
             deconv_args: dict[Any, Any] = {}
             if self.deconvolution is not None:
                 deconv_args = dict(
@@ -607,9 +694,10 @@ class LatticeData(OutputParams, DeskewParams):
                     z_end=self.crop.z_range[1],
                     skew_dir=self.skew_dir,
                     coverslip_rotation=self.coverslip_rotation,
+                    engine=self.engine,
                     **deconv_args
                 ))
-            yield slice.copy(update={"data": cropped, "roi_index": roi_index})
+            yield slice.model_copy(update={"data": cropped, "roi_index": roi_index})
 
     def _process_non_crop(self) -> Iterable[ImageSlice]:
         """

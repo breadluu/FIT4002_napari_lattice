@@ -41,7 +41,7 @@ ORIGIN_REFERENCE = (
 
 def _jsonable(value: Any) -> Any:
     """
-    Coerce a pydantic `.dict()` tree into something `json.dumps` accepts.
+    Coerce a pydantic `.model_dump()` tree into something `json.dumps` accepts.
 
     numpy scalars are the main hazard: the repo pins `numpy<2`, where `np.float32` and
     `np.int64` both raise from the stdlib encoder rather than degrading.
@@ -79,7 +79,7 @@ def build_config(lattice: "LatticeData") -> dict:
     serialised back to the config that produced them, so the source path is recorded
     instead - or `null` where the input was supplied in memory.
     """
-    config = lattice.dict(exclude={"input_image", "input_image_path", "derived", "workflow_path"})
+    config = lattice.model_dump(exclude={"input_image", "input_image_path", "derived", "workflow_path"})
 
     config["input_image"] = str(lattice.input_image_path) if lattice.input_image_path else None
     if lattice.workflow is not None:
@@ -128,7 +128,11 @@ def output_origin_zyx(
     from lls_core.utils import calculate_crop_bbox
 
     index = 0 if roi_index is None else int(roi_index)
-    roi_shape = _roi_to_shape_array(lattice.crop.roi_list[index])
+    if not lattice.crop.roi_by_time:
+        roi_shape = _roi_to_shape_array(lattice.crop.roi_list[index])
+    else:
+        #since tracking roi shape is constant with t only need to consider the first time point
+        roi_shape = _roi_to_shape_array(list(lattice.crop.roi_by_time[index].values())[0])
     z_start, z_end = lattice.crop.z_range
 
     if not lattice.coverslip_rotation:
@@ -189,7 +193,11 @@ def write_sidecar(
 
     roi = None
     if cropped:
-        corners = _roi_to_shape_array(lattice.crop.roi_list[index])
+        if not lattice.crop.roi_by_time:
+            corners = _roi_to_shape_array(lattice.crop.roi_list[roi_index])
+        else:
+            #since tracking roi shape is constant with t only need to consider the first time point
+            corners = _roi_to_shape_array(list(lattice.crop.roi_by_time[roi_index].values())[0])
         ys, xs = corners[:, 0], corners[:, 1]
         roi = {
             "index": index,

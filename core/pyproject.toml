@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=64", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.black]
@@ -9,9 +9,16 @@ line-length = 79
 profile = "black"
 line_length = 79
 
+# This package sits in core/, below the git root, so setuptools-scm is pointed at
+# the repository root. Both distributions then derive versions from the same tags.
+[tool.setuptools_scm]
+root = ".."
+version_file = "lls_core/_version.py"
+fallback_version = "0.0.0"
+
 [project]
 name = "lls_core"
-version = "2.2.2"
+dynamic = ["version"]
 authors = [
     {name = "Pradeep Rajasekhar"},
     {name = "Lachlan Whitehead"},
@@ -37,7 +44,9 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "bioio>=3.0.0",
-    "bioio-czi>=2.4.0",
+    # <4.0: bioio-czi deprecated pylibczirw mode in 3.0.1 and drops it, with the
+    # use_aicspylibczi parameter, in the next major. See lls_core.czi_reader.
+    "bioio-czi>=2.4.0,<4.0",
     "bioio-tifffile==1.3.0",
     "bioio-ome-tiff>=1.4.0",
     "click",
@@ -53,7 +62,8 @@ dependencies = [
     "numpy<2",
     "packaging",
     "pandas",
-    "pyclesperanto",
+    # 0.25 bundles its own OpenCL loader DLL and its backend fails to load on the Windows CI runner
+    "pyclesperanto>=0.22,<0.25",
     "transforms3d",
     # Imported directly in lls_core.czi_reader for fast CZI reads. Same library
     # bioio-czi uses by default, so output matches bioio (also pulled in by it).
@@ -106,6 +116,9 @@ docs = [
     "mkdocs-material",
     "mkdocs-video",
     "mkdocs-jupyter",
+    # The docs build runs on Python 3.10, where mkdocstrings stops at 1.0.6, and
+    # that version crashes with pymdown-extensions 12 (Highlight needs an `md` argument)
+    "pymdown-extensions<12",
     # Includes fixes for Pydantic 1.X
     "fieldz>=0.1.0",
     "griffe-fieldz"
@@ -165,6 +178,7 @@ ignore_unused = [
     "mkdocs-video",
     "mkdocs-material",
     "mkdocs-jupyter",
+    "pymdown-extensions",
     "fieldz",
     "griffe-fieldz",
 

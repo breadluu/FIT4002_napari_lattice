@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pyclesperanto as cle
 
-from lls_core import DeskewDirection
+from lls_core import DeskewDirection, DeskewEngine
 from lls_core.affine import AffineTransform3D
 from xarray import DataArray
 
@@ -34,9 +34,9 @@ def load_image_lazy(path: Path) -> DataArray:
     """
     from bioio import BioImage
     from os import fspath
-    from lls_core.czi_reader import czi_xarray
+    from lls_core.czi_reader import bioimage_kwargs, czi_xarray
     resolved = fspath(path)
-    image = BioImage(resolved)
+    image = BioImage(resolved, **bioimage_kwargs(resolved))
     # The facade czi_xarray builds is created here, inside the worker, so the
     # non-picklable reader it holds never has to cross a process boundary.
     fast = czi_xarray(resolved, image)
@@ -79,11 +79,11 @@ class DerivedDeskewFields(FieldAccessModel):
 class DeskewParams(FieldAccessModel):
     input_image: DataArray = Field(
         description="A 3-5D array containing the image data. Can be anything convertible to an Xarray, including a `dask.array` or `numpy.ndarray`. Can also be provided as a `str`, in which case it must indicate the path to an image to load from disk.",
-        cli_description="A path to any standard image file (TIFF, H5 etc) containing a 3-5D array to process."
+        json_schema_extra={"cli_description": "A path to any standard image file (TIFF, H5 etc) containing a 3-5D array to process."}
     )
     input_image_path: Optional[Path] = Field(
         default=None,
-        cli_hide=True,
+        json_schema_extra={"cli_hide": True},
         description="Internal: the filesystem path the input image was loaded from, if any. "
                     "Set automatically when `input_image` is provided as a path, and used to re-open "
                     "the image lazily inside parallel worker processes. Not a user-facing parameter."
@@ -115,11 +115,19 @@ class DeskewParams(FieldAccessModel):
                     "(cle.deskew_y/x) and is coverslip-level for Zeiss LLS7; False skips the rotation and "
                     "is coverslip-level for some OPM/SOPi."
     )
+    engine: DeskewEngine = Field(
+        default=DeskewEngine.GPU,
+        description="Which backend performs the deskew computation. `GPU` (default) uses pyclesperanto/OpenCL "
+                    "and requires a working GPU. `CPU` uses a Numba-jitted implementation of the same "
+                    "orthogonal-interpolation algorithm and needs no GPU, at the cost of being slower on large "
+                    "volumes. `CPU` currently only supports the standard deskew (`coverslip_rotation=True`). "
+                    "ROI cropping, including tracked-ROI cropping, works on both engines."
+    )
     derived: DerivedDeskewFields = Field(
         init_var=False,
         default=None,
         description="Refer to the `DerivedDeskewFields` docstring",
-        cli_hide=True,
+        json_schema_extra={"cli_hide": True},
         validate_default=True
     )
     # Hack to ensure that .skew_dir behaves identically to .skew
@@ -133,6 +141,24 @@ class DeskewParams(FieldAccessModel):
 
     @property
     def deskew_func(self):
+        if self.engine == DeskewEngine.CPU:
+            if not self.coverslip_rotation:
+                raise ValueError(
+                    "The CPU deskew engine currently only supports the standard deskew "
+                    "(coverslip_rotation=True). Either enable Coverslip Rotation, or switch "
+                    "the engine back to GPU for the shear-only OPM/SOPi frame."
+                )
+            from lls_core.cpu_deskew import cpu_deskew
+            skew_dir = self.skew
+            output_shape = self.derived.deskew_vol_shape
+            # Adapt to the deskew_func call convention used in _process_non_crop
+            def _cpu(input_image, angle, voxel_size_x, voxel_size_y, voxel_size_z):
+                return cpu_deskew(
+                    input_image, angle_in_degrees=angle,
+                    voxel_size_x=voxel_size_x, voxel_size_y=voxel_size_y, voxel_size_z=voxel_size_z,
+                    deskew_direction=skew_dir, output_shape=output_shape,
+                )
+            return _cpu
         if not self.coverslip_rotation:
             # OPM/SOPi (shear-only) branch
             from lls_core.shear_only_deskew import shear_only_deskew
@@ -230,6 +256,27 @@ class DeskewParams(FieldAccessModel):
             return DeskewDirection[v]
         return v
 
+    @field_validator("engine", mode="before")
+    @classmethod
+    def convert_engine(cls, v: Any):
+        # Allow engine to be provided as a string
+        if isinstance(v, str):
+            return DeskewEngine[v]
+        return v
+
+    @model_validator(mode="after")
+    def validate_cpu_engine(self) -> Self:
+        # The CPU (Numba) engine only implements the standard orthogonal-interpolation
+        # deskew, matching what it's ported from; the shear-only OPM/SOPi frame has no
+        # CPU implementation yet.
+        if self.engine == DeskewEngine.CPU and not self.coverslip_rotation:
+            raise ValueError(
+                "The CPU deskew engine currently only supports the standard deskew "
+                "(Coverslip Rotation enabled). Either enable Coverslip Rotation, or switch "
+                "the engine back to GPU for the shear-only OPM/SOPi frame."
+            )
+        return self
+
     @field_validator("physical_pixel_sizes", mode="before")
     @classmethod
     def convert_pixels(cls, v: Any):
@@ -276,7 +323,9 @@ class DeskewParams(FieldAccessModel):
 
         aics: BioImage | None = None
         if is_pathlike(img):
-            aics = BioImage(fspath(img))
+            from lls_core.czi_reader import bioimage_kwargs
+
+            aics = BioImage(fspath(img), **bioimage_kwargs(fspath(img)))
             # Remember the source path so parallel workers can re-open the file lazily
             values["input_image_path"] = Path(fspath(img)).resolve()
         elif isinstance(img, BioImage):

@@ -11,7 +11,7 @@ from lls_core.affine import AffineTransform3D, determine_translation_and_boundin
 from lls_core.affine_transform_deskew import affine_transform_deskew_3d
 from numpy.typing import NDArray 
 from lls_core.utils import calculate_crop_bbox, ShapeOnly
-from lls_core import config, DeskewDirection
+from lls_core import config, DeskewDirection, DeskewEngine
 from lls_core.types import ArrayLike
 from lls_core.deconvolution import pycuda_decon, skimage_decon, DeconvolutionChoice
 
@@ -178,6 +178,48 @@ def objective_crop_geometry(
     )
 
 
+def _deskew_objective_block(
+    volume: ArrayLike,
+    transform: Any,
+    angle_in_degrees: float,
+    voxel_size_x: float,
+    voxel_size_y: float,
+    voxel_size_z: float,
+    skew_dir: DeskewDirection,
+    engine: DeskewEngine = DeskewEngine.GPU,
+):
+    """
+    Deskew one raw sub-block in the objective frame on the requested engine.
+
+    Both engines produce the same array for the same block. The OpenCL kernel computes
+    `z_orig/y_orig/x_orig` from its `mat` argument but never reads them, so its output
+    depends only on the output index and the source, with the output *shape* taken from
+    the block's transformed bounding box. The CPU kernel is given that same shape, which
+    is what keeps `ObjectiveCropGeometry.crop_excess` valid for both engines.
+    """
+    if engine == DeskewEngine.CPU:
+        from lls_core.cpu_deskew import cpu_deskew
+        output_shape, _, _ = determine_translation_and_bounding_box(volume, transform)
+        return cpu_deskew(
+            volume,
+            angle_in_degrees=angle_in_degrees,
+            voxel_size_x=voxel_size_x,
+            voxel_size_y=voxel_size_y,
+            voxel_size_z=voxel_size_z,
+            deskew_direction=skew_dir,
+            output_shape=tuple(output_shape),
+        )
+    return affine_transform_deskew_3d(
+        volume,
+        transform=transform,
+        deskewing_angle_in_degrees=angle_in_degrees,
+        voxel_size_x=voxel_size_x,
+        voxel_size_y=voxel_size_y,
+        voxel_size_z=voxel_size_z,
+        deskew_direction=skew_dir,
+    )
+
+
 class CommonArgs(TypedDict, total=False):
     original_volume: Required[ArrayLike]
     deskewed_volume: Union[ ArrayLike, None ]
@@ -195,6 +237,7 @@ class CommonArgs(TypedDict, total=False):
     linear_interpolation: bool
     skew_dir: DeskewDirection
     coverslip_rotation: bool
+    engine: DeskewEngine
 
 @overload
 def crop_volume_deskew(*, debug: Literal[True], get_deskew_and_decon: bool = False, **kwargs: Unpack[CommonArgs]) -> Tuple[NDArray, NDArray]:
@@ -224,6 +267,7 @@ def crop_volume_deskew(
     skew_dir: DeskewDirection=DeskewDirection.Y,
     get_deskew_and_decon: bool = False,
     coverslip_rotation: bool = True,
+    engine: DeskewEngine = DeskewEngine.GPU,
 ):
     """Crop the volume from original data and deskew the cropped volume
     Args:
@@ -244,6 +288,9 @@ def crop_volume_deskew(
         linear_interpolation (bool, optional): Linear Interpolation after deskewing. Defaults to True.
         skew_direct (DeskewDirection, optional): Deskew direction. Defaults to DeskewDirection.Y.
         get_deskew_no_decon (bool, optional): Return both deconvolved data and deskewed data with no deconvolution. Defaults to False.
+        engine (DeskewEngine, optional): Backend that deskews the cropped sub-block. `CPU` uses the Numba
+            kernel and needs no GPU. Only applies to the objective frame (`coverslip_rotation=True`);
+            the shear-only frame is GPU only. Defaults to `DeskewEngine.GPU`.
 
     Returns:
         _type_: _description_
@@ -371,34 +418,19 @@ def crop_volume_deskew(
                 boundary="nearest",
             )
 
-        deskewed_prelim = affine_transform_deskew_3d(
-            crop_volume_processed,
-            transform=deskew_transform,
-            deskewing_angle_in_degrees=angle_in_degrees,
-            voxel_size_x=voxel_size_x,
-            voxel_size_y=voxel_size_y,
-            voxel_size_z=voxel_size_z,
-            deskew_direction=skew_dir,
+        deskewed_prelim = _deskew_objective_block(
+            crop_volume_processed, deskew_transform, angle_in_degrees,
+            voxel_size_x, voxel_size_y, voxel_size_z, skew_dir, engine,
         )
         if get_deskew_and_decon:
-            deskewed_no_decon = affine_transform_deskew_3d(
-                crop_volume,
-                transform=deskew_transform,
-                deskewing_angle_in_degrees=angle_in_degrees,
-                voxel_size_x=voxel_size_x,
-                voxel_size_y=voxel_size_y,
-                voxel_size_z=voxel_size_z,
-                deskew_direction=skew_dir,
+            deskewed_no_decon = _deskew_objective_block(
+                crop_volume, deskew_transform, angle_in_degrees,
+                voxel_size_x, voxel_size_y, voxel_size_z, skew_dir, engine,
             )
     else:
-        deskewed_prelim = affine_transform_deskew_3d(
-            crop_volume,
-            transform=deskew_transform,
-            deskewing_angle_in_degrees=angle_in_degrees,
-            voxel_size_x=voxel_size_x,
-            voxel_size_y=voxel_size_y,
-            voxel_size_z=voxel_size_z,
-            deskew_direction=skew_dir,
+        deskewed_prelim = _deskew_objective_block(
+            crop_volume, deskew_transform, angle_in_degrees,
+            voxel_size_x, voxel_size_y, voxel_size_z, skew_dir, engine,
         )
 
     # Only the skew axis is trimmed to the ROI; see `ObjectiveCropGeometry`.

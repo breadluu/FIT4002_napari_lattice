@@ -129,6 +129,16 @@ While making the suite pass under the new backend:
 
 User-facing mentions of `pyclesperanto_prototype` were switched to `pyclesperanto` in README acknowledgements, workflow docs, educational notebooks, and example workflow YAMLs. That is a rename/update pass so examples match the installed package; it is separate from the behaviour notes above.
 
+### Workflow files saved with `pyclesperanto_prototype`
+
+Workflow YAML files written before the migration name their functions as
+`pyclesperanto_prototype.<name>`. napari-lattice no longer depends on that package, so while a
+workflow is being read those names are resolved against `pyclesperanto` instead (see
+`lls_core.workflow.workflow_from_path`). The file on disk is not modified. A function that has
+no equivalent under the same name (for example `connected_components_labeling_box`, now
+`connected_component_labeling`) raises an error that says so, and the workflow file needs to be
+edited to use the matching `pyclesperanto` function.
+
 ### Tests updated for pyclesperanto
 
 Broad import and API updates across GPU-related tests, including:
